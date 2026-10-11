@@ -47,7 +47,6 @@ ZIZMOR_BUILDS = {
     ),
 }
 TOOLKIT_REPOSITORY = "outernet-foundation/github-actions-toolkit"
-STALE_TOOLKIT_SPELLING = "outernet-foundation/release-devkit"
 TOOLKIT_USES = re.compile(rf"^{re.escape(TOOLKIT_REPOSITORY)}/\S+@(\S+)$")
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 RELEASE_WORKFLOW = Path(".github/workflows/release.yml")
@@ -168,15 +167,6 @@ def validate_action_file(path: Path, toolkit_pins: dict[Path, str]) -> list[Prob
 def collect_pin_problems(path: Path, uses_values: list[str], toolkit_pins: dict[Path, str]) -> list[Problem]:
     problems: list[Problem] = []
     for uses in uses_values:
-        if uses.startswith(STALE_TOOLKIT_SPELLING):
-            problems.append(
-                file_problem(
-                    path,
-                    f"stale toolkit spelling '{uses}' — the rename redirect must never mask"
-                    f" the canonical '{TOOLKIT_REPOSITORY}'",
-                )
-            )
-            continue
         match = TOOLKIT_USES.fullmatch(uses)
         if match is None:
             continue

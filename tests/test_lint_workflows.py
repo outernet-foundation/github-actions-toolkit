@@ -77,15 +77,6 @@ def test_short_sha_is_flagged(tmp_path: Path) -> None:
     assert "must pin a full 40-hex commit SHA" in rendered(validate_workflow_file(path, pins))
 
 
-def test_stale_repository_spelling_is_flagged(tmp_path: Path) -> None:
-    path = write(
-        tmp_path / "workflow.yml",
-        workflow_with_uses(f"outernet-foundation/release-devkit/.github/workflows/preflight.yml@{GOOD_SHA}"),
-    )
-    pins: dict[Path, str] = {}
-    assert "stale toolkit spelling" in rendered(validate_workflow_file(path, pins))
-
-
 def test_non_toolkit_refs_are_not_pin_checked(tmp_path: Path) -> None:
     path = write(tmp_path / "workflow.yml", workflow_with_uses("actions/checkout@v5"))
     pins: dict[Path, str] = {}
