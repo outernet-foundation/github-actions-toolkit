@@ -195,11 +195,19 @@ landing), promote dev → main (fast-forward, operator-owned), let the stable ch
 new line — the "sweep deliberately does NOT promote" law is dead. Each repo relocks onto the
 latest published versions of every dependency at its cutover: stable spellings once the
 upstream has promoted, dev prereleases before that; floors may keep the `>=X.Y.Z.dev0`
-spelling. The sweep opened with build-artifact-registry's self-cutover on branch
-`toolkit-cutover` (consumer end-state workflows at toolkit `66df38b`, wrapper action deleted,
-config migrated to `registry:`+`identity:`, sidecar relocked onto the python-devkit 0.3 line,
-deptry self-declaration deleted, main lock refreshed to latest) — handed to the operator for
-push, green, merge, and promotion.
+spelling. The sweep's first two nodes: build-artifact-registry LANDED end to end (self-cutover
+at toolkit `66df38b`, wrapper action deleted, config migrated to `registry:`+`identity:`,
+sidecar relocked onto the python-devkit 0.3 line, deptry self-declaration deleted, main lock
+refreshed to bashrun 0.8 — merged through its gate, promoted dev → main, and stable
+`build-artifact-registry 0.2.0` published to PyPI: the identity's first stable, so the publish
+needed no major_minor forcing — no tag ever existed under the new name; the 3.15 wrapper carry
+died with the wrapper). python-devkit's self-cutover is handed off on branch `toolkit-cutover`
+(off the phase-5 tip `c8efa62` — local dev predates Phase 5; same consumer shape at `66df38b`,
+wrapper deleted, config migrated, harness `scripts/preflight.py` running the verb itself — the
+self-preflight exception, no sidecar, no dependency — hatch wheel `include` block dropped,
+relock onto bashrun 0.8/pydantic 2.14/typer 0.27.3; battery, lint-workflows, and
+validate-release-plan all green locally). Remote toolkit dev verified at `66df38b` (App token);
+the plan-record commits ride local until the operator pushes.
 
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
