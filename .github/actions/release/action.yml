@@ -33,4 +33,4 @@ runs:
         TOOLKIT_PROJECT: ${{ github.action_path }}/../..
         GITHUB_TOKEN: ${{ github.token }}
         NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
-        RELEASE_CHANNEL: ${{ inputs.stable && 'stable' || 'dev' }}
+        RELEASE_CHANNEL: ${{ inputs.stable == true && 'stable' || 'dev' }}
