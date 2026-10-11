@@ -126,7 +126,18 @@ credentials, by design). Fix (`feef989`): `inputs.stable == true && 'stable' || 
 Operator ruling on the stray: no yank — bashrun bumps `major_minor` to 0.7, the untagged
 0.6.0 stays on PyPI as an orphan (version math is tag-driven and never references it), the
 next dev publish is `0.7.0.dev{count}`, the eventual promotion publishes stable `0.7.0` and
-tags `bashrun-v0.7.0`.
+tags `bashrun-v0.7.0`. The PR #9 landing then rode the fixed composite green —
+`bashrun 0.7.0.dev83` live on PyPI, the dev channel's first correct run; PR #9's integrate
+and gate certified at `315814d`. The first-ever promotion surfaced the last piece:
+`main-append-only`'s `required_linear_history` rejected the fast-forward push ("must not
+contain merge commits") because dev's tips are the gate's `--no-ff` merge commits. Ruling
+(2026-10-11): promotion is a pure fast-forward pointer move of dev's tip — the cargo includes
+bors merge commits by design, and the stable channel's parent-split requires a merge-commit
+tip; the flag is removed from `main-append-only` (infra `dev`, `44a5c1e` + AGENTS.md
+`e3edd29` — fast-forward + undeletable stay, evergreen-main's operator-only update rule
+stays). The correct main envelope is exactly: only the operator updates, updates are
+fast-forwards, deletion blocked for everyone; "main only ever advances to a promoted dev
+SHA" remains procedural (no ruleset primitive binds a tip to another branch).
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
