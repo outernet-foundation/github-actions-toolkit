@@ -347,10 +347,11 @@ its preflight script with `packages: read`; capture-tool: `builds` dict→list,
 bump table: placeframe's 8 packages +1 minor each).
 
 Session record (2026-10-11, placeframe node): the cutover rides local branch `toolkit-cutover`,
-seven reviewable commits on `origin/dev` — two design-doc prose commits, the CI-script port
-off ci-devkit with the devkit-stables relock, the workflow cutover pinning the toolkit tip,
-the agent-docs prose update, the openapi-client-codegen relock (below), and the canonical
-`Run generate-clients` regen. Verified green locally: battery pieces (ruff, format, basedpyright,
+nine reviewable commits on `origin/dev` — a design-doc prose commit, the CI-script port
+off ci-devkit with the devkit-stables relock, a formatting-only commit for the ported
+scripts, the workflow cutover pinning the toolkit tip, the agent-docs prose update, the
+openapi-client-codegen relock (below), the canonical `Run generate-clients` regen, and the
+cesium.yml deletion (obsolete workflow, operator ruling) with its doc trim. Verified green locally: battery pieces (ruff, format, basedpyright,
 pytest, the full DB preflight with docker postgres, `generate-clients --check` api-scope),
 lint-workflows, validate-release-plan — the last two against the toolkit clone. The config split `placeframe-api-client` into TWO entries on
 one path — `placeframe-api-client` (nuget) + `placeframe-api-client-npm` (npm
@@ -362,17 +363,15 @@ published). ci-devkit is DISSOLVED out of placeframe entirely: `ci_step` banners
 plain prints in preflight/publish-compose/cesium, cache/setup_oras moved to
 build-artifact-registry, the cesium pipeline ported to unity-devkit 0.3's
 `restore_or_activate_license(registry, tag)` (the pre-0.1.21 `restore_license()` was long
-dead — cesium codegen/combine were already broken at runtime under the old 0.1.25 lock),
-and runner provisioning (disk, dotnet, node, safe.directory) moved into cesium.yml
-pre-steps per the binding's own law — scripts assume a provisioned environment. cesium.yml
-also had five `uv run<verb>` missing-space typos (the dispatch-only workflow was silently
-broken) and its third-party actions are now SHA-pinned (zizmor's blanket hash policy —
-actions/checkout and setup-uv reuse the toolkit's own pins). Two staleness gates watched
-hand-owned files: the repo preflight's datamodels pathspec now scopes to `src/` (the
-force-include hygiene edit dirtied it), and the datamodels force-include itself was
-REVERTED — it is a no-op (already shipped via `packages`), but openapi-client-codegen's
-`--check` pathspec covers the whole generated root, so dropping it needs a codegen-side
-pathspec change first; recorded here as inspected-no-op. The relock: bashrun 0.8.0,
+dead — cesium codegen/combine were already broken at runtime under the old 0.1.25 lock).
+cesium.yml itself is DELETED by operator ruling (obsolete workflow): its in-flight typo
+fixes, provisioning pre-steps, and SHA-pinning were expunged with the file; the cesium
+scripts remain in the tree without an invoking workflow. The datamodels staleness gate keeps
+its whole-package pathspec — operator ruling (2026-10-11): staleness checks are never run on
+a dirty worktree, so a red from uncommitted hand-owned files is an invocation error, not a
+gate defect; the earlier `src/` scoping was dropped, and the recorded concern about
+openapi-client-codegen's `--check` covering the whole generated root dissolves under the
+same ruling. The relock: bashrun 0.8.0,
 build-artifact-registry 0.2.0 (new dep), docker-devkit 0.3.0, unity-devkit 0.3.0,
 python-devkit 0.3.0, openapi-client-codegen 0.3.0, logger-conf 0.3.0, typer 0.27.3,
 pydantic 2.14.0 — and ruff HELD at 0.14.14 (see below). placeframe's `.python-version`
@@ -443,7 +442,7 @@ CI baggage. Both local stacks were then rebased for review onto their origin/dev
 to one prose commit with the carve add/retire pair expunged net-zero, placeframe's obviated
 pin-bump/doc-rename/repin commits dropped with the cutover commit pinning the rebased
 toolkit tip directly. Operator: push toolkit dev (one commit) before placeframe's PR runs
-CI, then placeframe's PR carries the seven-commit series.
+CI, then placeframe's PR carries the nine-commit series.
 
 Open carries, decisions pending: build-artifact-registry's wrapper-era 3.15 carry is RESOLVED
 — the cutover deleted the wrapper (its reusables pin `66df38b`, past the 3.13 pin), confirmed
