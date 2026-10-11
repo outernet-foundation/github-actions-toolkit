@@ -123,9 +123,10 @@ def test_release_resets_dev_draft_after_create(monkeypatch: pytest.MonkeyPatch) 
     assert delete_recorder.calls == [(DEV_DRAFT_TAG, "owner/repo")]
     assert len(written) == 1
     release_tag = f"{datetime.now(UTC).strftime('%Y.%m')}.1"
+    assert "### Commit [abcdef123456]" in written[0]
     assert "## Apps" in written[0]
     assert (
-        f"| myapp | 1.0.0 | [MyApp-AndroidMobile.apk]"
+        f"| myapp | AndroidMobile | [1.0.0]"
         f"(https://github.com/owner/repo/releases/download/{release_tag}/MyApp-AndroidMobile.apk) |"
     ) in written[0]
     assert "## Packages" not in written[0]

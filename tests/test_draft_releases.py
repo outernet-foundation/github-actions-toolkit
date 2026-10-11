@@ -123,12 +123,14 @@ def patch_bash(monkeypatch: pytest.MonkeyPatch, check_returns: object = False) -
     return bash_log
 
 
-def patch_pr_bash_output(monkeypatch: pytest.MonkeyPatch, body: str = "") -> None:
+def patch_pr_bash_output(monkeypatch: pytest.MonkeyPatch, body: str = "", api_versions: str = "[]") -> None:
     def dispatching_bash_output(command: str) -> str:
         if command == "git rev-parse HEAD":
             return CERTIFIED_SHA
         if command == f"git rev-list --count {CERTIFIED_SHA}":
             return str(COMMIT_COUNT)
+        if command.startswith("gh api /orgs/"):
+            return api_versions
         return json.dumps({"body": body})
 
     monkeypatch.setattr(release_module, "bash_output", dispatching_bash_output)
@@ -208,11 +210,46 @@ def test_update_pr_draft_writes_image_section_when_manifest(monkeypatch: pytest.
     release_module.main(channel=ReleaseChannel.PR)
 
     assert written
-    assert "zed-capture" in written[0]
-    assert "sha256:abc" in written[0]
-    assert "[tree-1](https://github.com/orgs/owner/packages/container/repo%2Fzed-capture)" in written[0]
-    assert f"https://github.com/owner/repo/commit/{CERTIFIED_SHA}" in written[0]
+    assert "| Image | Tag |" in written[0]
+    assert "| zed-capture | [`tree-1`](https://github.com/owner/repo/pkgs/container/repo%2Fzed-capture) |" in written[0]
+    assert "sha256:abc" not in written[0]
+    assert f"### Commit [{SHORT_SHA}](https://github.com/owner/repo/commit/{CERTIFIED_SHA})" in written[0]
     assert f"sha-{SHORT_SHA}" in written[0]
+
+
+def test_update_pr_draft_links_image_tag_to_exact_package_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    manifest = {"zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"])}
+    api_versions = json.dumps([{"name": "sha256:zzz", "id": 1}, {"name": "sha256:abc", "id": 1369985695}])
+    patch_context(monkeypatch, PublishConfig(built_images=True))
+    patch_pull_artifact(monkeypatch, digest_layer(manifest))
+    patch_pr_bash_output(monkeypatch, api_versions=api_versions)
+    patch_bash(monkeypatch, check_returns=False)
+    written = capturing_bash(monkeypatch)
+
+    release_module.main(channel=ReleaseChannel.PR)
+
+    assert written
+    assert (
+        "| zed-capture | [`tree-1`](https://github.com/owner/repo/pkgs/container/repo%2Fzed-capture/1369985695"
+        "?tag=tree-1) |" in written[0]
+    )
+
+
+def test_update_pr_draft_lists_images_alphabetically_by_ref(monkeypatch: pytest.MonkeyPatch) -> None:
+    manifest = {
+        "zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"]),
+        "aoa-bridge": DigestEntry(ref="ghcr.io/owner/repo/aoa-bridge", digest="sha256:def", tags=["tree-2"]),
+    }
+    patch_context(monkeypatch, PublishConfig(built_images=True))
+    patch_pull_artifact(monkeypatch, digest_layer(manifest))
+    patch_pr_bash_output(monkeypatch)
+    patch_bash(monkeypatch, check_returns=False)
+    written = capturing_bash(monkeypatch)
+
+    release_module.main(channel=ReleaseChannel.PR)
+
+    assert written
+    assert written[0].index("| aoa-bridge |") < written[0].index("| zed-capture |")
 
 
 def test_update_pr_draft_omits_images_when_not_declared(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -241,8 +278,8 @@ def test_update_pr_draft_lists_images_without_any_apps(monkeypatch: pytest.Monke
     release_module.main(channel=ReleaseChannel.PR)
 
     assert written
-    assert "zed-capture" in written[0]
-    assert "sha256:abc" in written[0]
+    assert "| zed-capture | [`tree-1`](https://github.com/owner/repo/pkgs/container/repo%2Fzed-capture) |" in written[0]
+    assert "sha256:abc" not in written[0]
 
 
 def test_update_pr_draft_merges_digest_shards(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -379,7 +416,7 @@ def test_update_pr_draft_replaces_same_anchor_and_preserves_others(monkeypatch: 
 
     assert written
     assert "### Old" in written[0]
-    assert f"### [{SHORT_SHA}]" in written[0]
+    assert f"### Commit [{SHORT_SHA}]" in written[0]
     assert "### New v1" not in written[0]
 
 
@@ -412,5 +449,11 @@ def test_update_pr_draft_lists_one_row_per_staged_artifact(monkeypatch: pytest.M
     release_module.main(channel=ReleaseChannel.PR)
 
     assert written
-    assert f"| myapp | 1.0.0 | [MyApp-AndroidMobile-{COMMIT_COUNT}.apk](" in written[0]
-    assert f"| myapp | 1.0.0 | [MyApp-IOS-{COMMIT_COUNT}.apk](" in written[0]
+    assert (
+        f"| myapp | AndroidMobile | [1.0.0]"
+        f"(https://github.com/owner/repo/releases/download/pr-107/MyApp-AndroidMobile-{COMMIT_COUNT}.apk) |"
+    ) in written[0]
+    assert (
+        f"| myapp | IOS | [1.0.0]"
+        f"(https://github.com/owner/repo/releases/download/pr-107/MyApp-IOS-{COMMIT_COUNT}.apk) |"
+    ) in written[0]

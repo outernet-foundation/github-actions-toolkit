@@ -6,6 +6,7 @@ import platform
 import re
 import shlex
 import shutil
+from subprocess import CalledProcessError
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -53,6 +54,12 @@ class PackageRow(NamedTuple):
     url: str | None
 
 
+class StagedAsset(NamedTuple):
+    app_name: str
+    platform: str
+    path: Path
+
+
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 
 
@@ -88,7 +95,7 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
     commit_count = int(bash_output(f"git rev-list --count {sha}").strip()) if channel != ReleaseChannel.STABLE else 0
 
     # Lay out the release notes scaffolding
-    heading = f"### [{short_sha}](https://github.com/{settings.github_repository}/commit/{sha})"
+    heading = f"### Commit [{short_sha}](https://github.com/{settings.github_repository}/commit/{sha})"
     prefix = "#" * (2 if channel == ReleaseChannel.STABLE else 4)
     blocks: list[str] = []
 
@@ -119,6 +126,8 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
 
             versions = {**release_plan.app_last_versions, **release_plan.app_versions}
 
+            blocks.append(heading)
+
     repository = settings.github_repository
 
     # Ensure a draft release exists and read its current body
@@ -134,10 +143,9 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
         packages = publish_packages(settings, publish_config, release_plan, channel, commit_count)
         if packages:
             packages_rows = [
-                [name, version, f"[{registry}]({url})" if url else registry]
-                for name, version, registry, url in packages
+                [name, registry, f"[{version}]({url})" if url else version] for name, version, registry, url in packages
             ]
-            blocks.append(f"{prefix} Packages\n{markdown_table(['Package', 'Version', 'Registry'], packages_rows)}")
+            blocks.append(f"{prefix} Packages\n{markdown_table(['Package', 'Registry', 'Version'], packages_rows)}")
 
     # Stage every app's build artifacts as release assets
     shelf = f"ghcr.io/{repository}/builds"
@@ -146,12 +154,12 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
         assets_rows = [
             [
                 app_name,
-                versions.get(app_name) or "—",
-                f"[{path.name}](https://github.com/{repository}/releases/download/{tag}/{path.name})",
+                platform,
+                f"[{versions.get(app_name) or '—'}](https://github.com/{repository}/releases/download/{tag}/{path.name})",
             ]
-            for app_name, path in assets
+            for app_name, platform, path in assets
         ]
-        blocks.append(f"{prefix} Apps\n{markdown_table(['App', 'Version', 'Asset'], assets_rows)}")
+        blocks.append(f"{prefix} Apps\n{markdown_table(['App', 'Platform', 'Version'], assets_rows)}")
 
     # List the images built at this SHA from the shelf
     if publish_config.built_images:
@@ -159,13 +167,12 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
         if images:
             images_rows = [
                 [
-                    image_name,
-                    f"[{tree_tag(entry)}]({ghcr_package_page(entry.ref)})",
-                    f"`{entry.digest}`",
+                    image_display_name(entry.ref, repository),
+                    f"[`{(tag := tree_tag(entry))}`]({package_version_url(settings, entry, tag)})",
                 ]
-                for image_name, entry in images.items()
+                for entry in sorted(images.values(), key=lambda entry: entry.ref)
             ]
-            blocks.append(f"{prefix} Built images\n{markdown_table(['Image', 'Tag', 'Digest'], images_rows)}")
+            blocks.append(f"{prefix} Built images\n{markdown_table(['Image', 'Tag'], images_rows)}")
 
     # Join the blocks into one section
     section = "\n\n".join(blocks)
@@ -262,10 +269,10 @@ def stage_apps(
     commit_count: int,
     tag: str,
     repository: str,
-) -> list[tuple[str, Path]]:
+) -> list[StagedAsset]:
     install_oras()
     staging = Path(mkdtemp(prefix="release-builds-"))
-    staged: list[tuple[str, Path]] = []
+    staged: list[StagedAsset] = []
     for app_name, artifact in [
         (app_name, artifact) for app_name, app in publish_config.apps.items() for artifact in app.builds
     ]:
@@ -290,7 +297,7 @@ def stage_apps(
             file_path.name if channel == ReleaseChannel.STABLE else f"{file_path.stem}-{commit_count}{file_path.suffix}"
         )
         shutil.copy2(source, target)
-        staged.append((app_name, target))
+        staged.append(StagedAsset(app_name, artifact.platform, target))
 
     # Tag the bumped app versions alongside their staged assets
     if channel == ReleaseChannel.STABLE:
@@ -298,7 +305,7 @@ def stage_apps(
             create_and_push_tag(f"{app_name}-v{app_version}")
 
     # Upload the staged assets
-    bash(f"gh release upload {tag} {' '.join(f'"{path}"' for _, path in staged)} --clobber --repo {repository}")
+    bash(f"gh release upload {tag} {' '.join(f'"{path}"' for _, _, path in staged)} --clobber --repo {repository}")
 
     return staged
 
@@ -348,11 +355,31 @@ def tree_tag(entry: DigestEntry) -> str:
     return next(tag for tag in entry.tags if tag.startswith("tree-"))
 
 
-def ghcr_package_page(ref: str) -> str:
-    if not ref.startswith("ghcr.io/"):
-        raise ValueError(f"image ref '{ref}' does not live under ghcr.io")
-    org, package = ref[len("ghcr.io/") :].split("/", 1)
-    return f"https://github.com/orgs/{org}/packages/container/{package.replace('/', '%2F')}"
+def image_display_name(ref: str, repository: str) -> str:
+    prefix = f"ghcr.io/{repository}/"
+    if not ref.startswith(prefix):
+        raise ValueError(f"image ref '{ref}' does not live under ghcr.io/{repository}")
+    return ref[len(prefix) :]
+
+
+def package_version_url(settings: Settings, entry: DigestEntry, tag: str) -> str:
+    owner, package = entry.ref[len("ghcr.io/") :].split("/", 1)
+    page = f"https://github.com/{settings.github_repository}/pkgs/container/{package.replace('/', '%2F')}"
+    version_id = package_version_id(owner, package, entry.digest)
+    return f"{page}/{version_id}?tag={tag}" if version_id else page
+
+
+def package_version_id(owner: str, package: str, digest: str) -> int | None:
+    try:
+        versions = bash_output(
+            f"gh api /orgs/{owner}/packages/container/{package.replace('/', '%2F')}/versions?per_page=100"
+        )
+    except CalledProcessError:
+        return None
+    for version in json.loads(versions):
+        if version["name"] == digest:
+            return version["id"]
+    return None
 
 
 def markdown_table(headers: list[str], rows: list[list[str]]) -> str:

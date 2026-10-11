@@ -165,6 +165,8 @@ def patch_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig, draft_
             return f"{MERGE_SHA} {CERTIFIED_SHA}\n"
         if command.startswith("git log"):
             return "Merge PR #7: Add the thing\n"
+        if command.startswith("gh api /orgs/"):
+            return "[]"
         return json.dumps({"body": draft_body, "url": "https://github.com/owner/repo/releases/untagged-abc"})
 
     monkeypatch.setattr(release_module, "bash_output", dispatching_bash_output)
@@ -241,7 +243,8 @@ def test_only_packages_changed_publishes_and_appends_section(monkeypatch: pytest
     assert npm_registry.calls[0]["base_version"] == "1.0.0"
     assert npm_registry.calls[0]["dev"] is True
     assert npm_registry.calls[0]["commit_count"] == COMMIT_COUNT
-    assert f"| pkg | 1.0.0-dev.{COMMIT_COUNT} |" in written[0]
+    dev_version = f"1.0.0-dev.{COMMIT_COUNT}"
+    assert f"| pkg | npm | [{dev_version}](https://registry.example/pkg-id/{dev_version}) |" in written[0]
     assert create_and_push_tag.calls == []
     assert pull_artifact.calls != []
     assert written != []
@@ -274,11 +277,11 @@ def test_only_apps_changed_surfaces_draft_but_skips_publish(monkeypatch: pytest.
     assert pull_artifact.calls[0][3] == f"sha-{CERTIFIED_SHA}"
     assert len(written) == 1
     assert "#### Apps" in written[0]
-    assert "| App | Version | Asset |" in written[0]
+    assert "| App | Platform | Version |" in written[0]
     fresh_link = (
         f"https://github.com/owner/repo/releases/download/{DEV_DRAFT_TAG}/MyApp-AndroidMobile-{COMMIT_COUNT}.apk"
     )
-    assert f"| myapp | 1.0.0 | [MyApp-AndroidMobile-{COMMIT_COUNT}.apk]({fresh_link}) |" in written[0]
+    assert f"| myapp | AndroidMobile | [1.0.0]({fresh_link}) |" in written[0]
 
 
 def test_stages_all_apps_regardless_of_source_changes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -330,9 +333,13 @@ def test_any_new_digest_appends_snapshot_section_with_all_images(monkeypatch: py
     release_module.main(channel=ReleaseChannel.DEV)
 
     assert len(written) == 1
-    assert digest_new in written[0]
-    assert digest_existing in written[0]
-    assert f"[{SHORT_SHA}](https://github.com/owner/repo/commit/{CERTIFIED_SHA})" in written[0]
+    assert "zed-capture" in written[0]
+    assert "other-capture" in written[0]
+    assert "[`tree-1`](" in written[0]
+    assert "[`tree-2`](" in written[0]
+    assert digest_new not in written[0]
+    assert digest_existing not in written[0]
+    assert f"### Commit [{SHORT_SHA}](https://github.com/owner/repo/commit/{CERTIFIED_SHA})" in written[0]
 
 
 def test_snapshot_section_lists_all_packages_with_dev_and_stable_versions(
@@ -354,9 +361,9 @@ def test_snapshot_section_lists_all_packages_with_dev_and_stable_versions(
 
     assert len(written) == 1
     fresh_version = f"1.0.0-dev.{COMMIT_COUNT}"
-    assert f"| fresh | {fresh_version} | [npm](https://registry.example/fresh-id/{fresh_version}) |" in written[0]
-    assert "| settled | 2.1.0 | [npm](https://registry.example/settled-id/2.1.0) |" in written[0]
-    assert "| never | 0.0.0 | npm |" in written[0]
+    assert f"| fresh | npm | [{fresh_version}](https://registry.example/fresh-id/{fresh_version}) |" in written[0]
+    assert "| settled | npm | [2.1.0](https://registry.example/settled-id/2.1.0) |" in written[0]
+    assert "| never | npm | 0.0.0 |" in written[0]
 
 
 def test_dev_version_spelling_per_registry() -> None:
