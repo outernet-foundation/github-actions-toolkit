@@ -55,7 +55,7 @@ class FakeTags:
 
 
 class FakePullArtifact:
-    def __init__(self, layers: dict[tuple[str, str], dict[str, str]]) -> None:
+    def __init__(self, layers: dict[tuple[str, ...], dict[str, str]]) -> None:
         self.layers = layers
         self.calls: list[tuple[object, ...]] = []
 
@@ -69,7 +69,7 @@ class FakePullArtifact:
         **kwargs: object,
     ) -> bool:
         self.calls.append((builds_registry, project, platform, tag, target))
-        files = self.layers.get((project, platform))
+        files = self.layers.get((project, platform, tag), self.layers.get((project, platform)))
         if files is None:
             return False
         target.mkdir(parents=True, exist_ok=True)
@@ -135,11 +135,17 @@ def patch_pr_bash_output(monkeypatch: pytest.MonkeyPatch, body: str = "") -> Non
 
 
 def patch_pull_artifact(
-    monkeypatch: pytest.MonkeyPatch, layers: dict[tuple[str, str], dict[str, str]]
+    monkeypatch: pytest.MonkeyPatch, layers: dict[tuple[str, ...], dict[str, str]]
 ) -> FakePullArtifact:
     pull_artifact = FakePullArtifact(layers)
     monkeypatch.setattr(release_module, "pull_artifact", pull_artifact)
+    monkeypatch.setattr(release_module, "list_build_tags", FixedReturn([]))
     return pull_artifact
+
+
+def shard_layer(tag: str, manifest: dict[str, DigestEntry]) -> dict[tuple[str, str, str], dict[str, str]]:
+    data = {name: entry.model_dump() for name, entry in manifest.items()}
+    return {("images-digests", "all", tag): {DIGEST_FILE_NAME: json.dumps(data)}}
 
 
 def capturing_bash(monkeypatch: pytest.MonkeyPatch) -> list[str]:
@@ -237,6 +243,56 @@ def test_update_pr_draft_lists_images_without_any_apps(monkeypatch: pytest.Monke
     assert written
     assert "zed-capture" in written[0]
     assert "sha256:abc" in written[0]
+
+
+def test_update_pr_draft_merges_digest_shards(monkeypatch: pytest.MonkeyPatch) -> None:
+    shard_a = {"zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"])}
+    shard_b = {"aoa-bridge": DigestEntry(ref="ghcr.io/owner/repo/aoa-bridge", digest="sha256:def", tags=["tree-2"])}
+    patch_context(monkeypatch, PublishConfig(built_images=True))
+    patch_pull_artifact(
+        monkeypatch,
+        {
+            **shard_layer(f"sha-{CERTIFIED_SHA}-aaaaaaaa", shard_a),
+            **shard_layer(f"sha-{CERTIFIED_SHA}-bbbbbbbb", shard_b),
+        },
+    )
+    monkeypatch.setattr(
+        release_module,
+        "list_build_tags",
+        FixedReturn([f"sha-{CERTIFIED_SHA}-aaaaaaaa", f"sha-{CERTIFIED_SHA}-bbbbbbbb"]),
+    )
+    patch_pr_bash_output(monkeypatch)
+    patch_bash(monkeypatch, check_returns=False)
+    written = capturing_bash(monkeypatch)
+
+    release_module.main(channel=ReleaseChannel.PR)
+
+    assert written
+    assert "zed-capture" in written[0]
+    assert "aoa-bridge" in written[0]
+
+
+def test_update_pr_draft_fails_loudly_on_overlapping_shards(monkeypatch: pytest.MonkeyPatch) -> None:
+    shard_a = {"zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"])}
+    shard_b = {"zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"])}
+    patch_context(monkeypatch, PublishConfig(built_images=True))
+    patch_pull_artifact(
+        monkeypatch,
+        {
+            **shard_layer(f"sha-{CERTIFIED_SHA}-aaaaaaaa", shard_a),
+            **shard_layer(f"sha-{CERTIFIED_SHA}-bbbbbbbb", shard_b),
+        },
+    )
+    monkeypatch.setattr(
+        release_module,
+        "list_build_tags",
+        FixedReturn([f"sha-{CERTIFIED_SHA}-aaaaaaaa", f"sha-{CERTIFIED_SHA}-bbbbbbbb"]),
+    )
+    patch_pr_bash_output(monkeypatch)
+    patch_bash(monkeypatch, check_returns=False)
+
+    with pytest.raises(SystemExit, match="repeats target"):
+        release_module.main(channel=ReleaseChannel.PR)
 
 
 def test_update_pr_draft_fails_loudly_on_treeless_manifest_entry(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -14,7 +14,7 @@ from typing import Annotated, NamedTuple, Self
 
 import typer
 from bashrun.bash import bash, bash_check, bash_output
-from build_artifact_registry.builds import pull_artifact
+from build_artifact_registry.builds import list_build_tags, pull_artifact
 from pydantic import BaseModel, model_validator
 
 from release_devkit.config import DEFAULT_CONFIG_PATH, PublishConfig, Settings, load_config
@@ -301,19 +301,44 @@ def stage_apps(
     return staged
 
 
+# Each docker matrix leg shelves its own manifest shard under sha-{sha}-{key}; the
+# legs run in parallel so a shared tag would be last-writer-wins. Consumption runs
+# after every leg finished, so the merge happens here: enumerate the SHA's shards,
+# pull each, and combine. The bare sha-{sha} tag (single-leg pushes from before the
+# shard grammar) still resolves as a one-shard fallback.
 def pull_digest_manifest(settings: Settings, shelf: str, sha: str) -> dict[str, DigestEntry]:
-    digest_staging = Path(mkdtemp(prefix="digest-manifest-"))
-    pull_artifact(
-        shelf,
-        DIGEST_PROJECT,
-        DIGEST_PLATFORM,
-        f"sha-{sha}",
-        digest_staging,
-        registry_username=settings.github_actor,
-        registry_token=settings.github_token,
+    shard_prefix = f"sha-{sha}-"
+    shard_tags = sorted(
+        tag
+        for tag in list_build_tags(
+            shelf,
+            DIGEST_PROJECT,
+            DIGEST_PLATFORM,
+            registry_username=settings.github_actor,
+            registry_token=settings.github_token,
+        )
+        if tag.startswith(shard_prefix)
     )
-    data = json.loads((digest_staging / DIGEST_FILE_NAME).read_text(encoding="utf-8"))
-    return {target: DigestEntry.model_validate(entry) for target, entry in data.items()}
+    if not shard_tags:
+        shard_tags = [f"sha-{sha}"]
+    merged: dict[str, DigestEntry] = {}
+    for shard_tag in shard_tags:
+        digest_staging = Path(mkdtemp(prefix="digest-manifest-"))
+        pull_artifact(
+            shelf,
+            DIGEST_PROJECT,
+            DIGEST_PLATFORM,
+            shard_tag,
+            digest_staging,
+            registry_username=settings.github_actor,
+            registry_token=settings.github_token,
+        )
+        data = json.loads((digest_staging / DIGEST_FILE_NAME).read_text(encoding="utf-8"))
+        for target, entry in data.items():
+            if target in merged:
+                raise SystemExit(f"digest shard '{shard_tag}' repeats target '{target}' from another shard")
+            merged[target] = DigestEntry.model_validate(entry)
+    return merged
 
 
 def tree_tag(entry: DigestEntry) -> str:

@@ -175,6 +175,7 @@ def patch_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig, draft_
     }
     pull_artifact = FakePullArtifact(layers)
     monkeypatch.setattr(release_module, "pull_artifact", pull_artifact)
+    monkeypatch.setattr(release_module, "list_build_tags", FixedReturn([]))
     return pull_artifact
 
 
