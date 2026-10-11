@@ -268,6 +268,50 @@ later; until then this repo lands by operator push (the evergreen invariant held
 exactly the certified SHA; the gate mechanism was skipped, not the certification), and PR #3
 closed itself MERGED. Next: Phase 3 (unity-devkit), unchanged.
 
+Fifth session (2026-10-10): Phase 3 part one, two repos. build-artifact-registry's sequenced
+API bump landed first — `registry_auth` dropped the `CI_` prefix (`REGISTRY_USERNAME`/
+`REGISTRY_TOKEN`, hard flip), `major_minor` 0.1→0.2, operator-merged off branch
+`registry-auth-neutral-env`, and its release.yml published `0.2.0.dev38099046697` to PyPI
+(run-keyed; the `>=0.2.0.dev0` floor matches it and any later count-keyed republish). Phase 3's
+unity-devkit half is code-complete on branch `phase3-domain-purification` (based on dev plus the
+unpushed 3.13 pin `f420cc3` riding it): `ci-build-unity` is deleted with `build-unity` absorbing
+the CI shape — execution ruling on the shelving discriminator: "supplied registry env" reads as
+`--registry` supplied (empty is the local build), not auth-env presence, so a local shell with
+exported `REGISTRY_*` credentials never trips the CI shape; the matrix verbs emit bare JSON
+arrays (legs `project`/`platform`/`editor-image`; `unityci-image-module` dropped from the schema
+as unconsumed by every post-flip consumer; the `matrix=`/`license=` `$GITHUB_OUTPUT` lines dead);
+`--license`→`--license-cache-key`; `--version-code`→`--commit-count`, with `build_player`
+rendering `bundleVersion = {version}+{commit-count}` and `AndroidBundleVersionCode` from the one
+input pair (seam law as amended: derives neither fact, renders both fields); typer declaration
+order mirrors the binding's switch order exactly — compile-check's required `--registry` after
+defaulted options is spelled as an empty default plus a loud required check (the typer `= ...`
+required marker fails basedpyright strict); `ci_step`/`setup` imports dead — the Setup
+`install_dotnet` call was already redundant (`prepare_unity_project` provisions dotnet on demand
+for NuGet consumers) and `configure_git`'s safe.directory became a binding pre-step in
+build-unity.yml (toolkit local dev carries it, `b5d72ce` + AGENTS.md `9301dc9`, unpushed — the
+verb's `git rev-parse HEAD` needs the trust in the container); the `ci-devkit` dependency
+replaced by `build-artifact-registry>=0.2.0.dev0`; `install`'s `pull_build`→`pull_artifact`;
+unity-devkit's own integrate.yml getter renamed `plan-unity-compile-checks`, piping through the
+pinned clone's `matrix` verb with the wrapper pin bumped to the certified head
+`d9826576a567b0081dd0f705f4a7eb8a9d2a0646` — which forced its merge-gate.yml to the labeled-only
+wake (the new lint bans `workflow_run` outright) and put `--locked` on every `uv run`;
+`major_minor` 0.3 on both `unity-devkit` and `playerbuild`; AGENTS.md rewritten (the consumer
+template section replaced by the reusable reference, the env contract and version-stamping
+constraints updated). Verified locally: 42 tests, ruff, basedpyright strict green — the venv
+installed the published 0.1 prerelease to stand in for the import surface, since the relock
+needs the 0.2 floor. Phase 3 remains open on: the relock onto the published floor (`uv lock`),
+the full preflight battery, then push/PR/land — the 0.3 dev prerelease publish rides its own
+release.yml. Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in
+the wrapper-driven jobs — its wrapper pins `029a9a6`, a pre-rearchitecture toolkit tip that
+predates the toolkit's 3.13 pin, and `uv run --project` discovers the interpreter from the clone
+(the third-session mechanism; the repo's own pin cannot reach it; `tools/devkit` lacks a
+`.python-version` as a secondary door). Candidates: wrapper bump to `d982657` (requires the
+merge-gate wake fix and `release-devkit.yaml` migration to `registry:`+`identity:` — the new
+loader hard-flips the old `registries:` spelling) vs job-level `python-version` pins on the
+setup-uv steps. Also: its origin remote still spells the ci-devkit SSH URL (redirects cover it;
+rename housekeeping is host-side), and `gh` is confirmed blind to Actions runs (401 — the App
+token's capability boundary, verified live).
+
 ### Matrix/version refactor (before Phase 3)
 
 Executed on the branch, riding the Phase 0 + Phase 2 PR: per-leg base-version stamping; `get-app-version` died as a verb. The
