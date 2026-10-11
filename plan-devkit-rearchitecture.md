@@ -779,6 +779,23 @@ relock + 16 `x-base-images` upstream-native), then placeframe-capture-tool and l
 (both gated on placeframe's new UPM line existing on the registry), Make-it-Sing, Nessle,
 ObserveThing, StatefulUnity.
 
+Session close (2026-10-11, 8.3 resweep landed end to end): the operator merged and promoted all
+eight legs — each through its gate, dev → main, stable channel silent (no package path touched,
+nothing published, as diagnosed). Toolkit dev pushed at `8e2b332` (all four plan records
+aboard; code-identical to the resweep pin `48250c4` — the delta is plan records). The local
+consumer clones sit on their merged `toolkit-repin` branches with dev/main refs lagging — the
+operator pulls before the next session touches them. placeframe moved underfoot: PR #136
+merged into dev (`3c9924a8`), and the operator's follow-on branch `2.0` (`469897a2`, pushed —
+"Bump major minor to 2.0 for all packages") supersedes this plan's +1-minor bump rows for
+placeframe; promotion state and the registry lines are the next session's first verification
+(which lines the dev channel published at the merge vs. what the 2.0 bump redefines), then the
+8.3 placeframe leg (repin to the tip, docker-devkit 0.4 relock, 16 `x-base-images`
+upstream-native). python-devkit's ruff-0.17 triage `9945222` is UNLANDED — it rides local
+branch `ignore-more-ruff-rules`, so the blocker on every ruff-0.17 relock stands. Remaining
+node clone states: Make-it-Sing / lbe-toolkit / Nessle / ObserveThing on `ci-support-redux`
+(ahead 1 — the interpreter pin), placeframe-capture-tool on `toolkit-cutover` @ `ee0c8a2` (its
+wrapper-era dev), StatefulUnity on main.
+
 Ruled out (do not re-propose without new information): an added composite-lint layer
 (bettermarks/composite-action-lint surveyed).
 
