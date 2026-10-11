@@ -572,6 +572,32 @@ the bare package page as fallback (API blip → degraded link, never a dead run)
 `release.py` + tests (162 green, ruff/format/basedpyright); consumers inherit by repinning
 past the SHA per the fresh-SHA law — placeframe's pending repin carries it.
 
+Session record (2026-10-11, release-verb polish and the c093cfb certification): three toolkit
+dev commits on top of the rendering redesign. `e34070a` confined release.py comments to short
+in-body imperatives inside functions; `9d23aef` inlined the toolchain installs into
+`publish_packages` (dotnet/npm provisioning as commented blocks inside the phase; the
+provisioning-touching unit tests switched their fake packages npm→pypi so they exercise the
+publish loop, never the install code); `c093cfb` aggressively inlined the single-call helpers
+into `main` (`create_or_update_release`, `configure_git`, `tree_tag`, `image_display_name`,
+`package_version_url` folded in; `publish_packages`/`stage_apps`/`pull_digest_manifest` stay as
+phases by operator ruling; `package_version_id` stays per the try-block exception) — which
+surfaced a latent bug: the images comprehension's `(tag := tree_tag(entry))` walrus rebound the
+enclosing release tag, so any PR/dev run with `built_images: true` would `gh release edit` at
+the last image's tree- tag; the inlined loop's distinct `image_tag` fixes it (no test covered
+the edit command on that path). Operator pushed toolkit dev = `c093cfb`. Placeframe repinned all
+8 `uses:` refs `5376786` → `c093cfb`, squashed into the cutover commit by operator ruling over
+the upstream-target convention (fixup + autosquash onto the already-pushed `4b8f08dc`, message
+respelled "…at c093cfb", the six later commits replayed via a detach/cherry-pick rebuild after
+the post-rebase amend landed on the tip instead of the squashed commit; final tree verified
+pin-lines-only) — tip `895b65ee`, operator force-pushed, CI green end to end, and the operator
+confirms the `pr-136` draft renders as intended: the rendering redesign's live certification,
+closing the formatting loop the review-restructure record deferred. Landing sequence unchanged
+(verify `NUGET_USER` + MERGE_BOT/evergreen-dev wiring before labeling; the
+ruff-0.17/python-devkit `9945222` blocker unchanged). Next session opens at the
+placeframe-capture-tool cutover (Phase 7 sweep; per-repo specifics above: builds dict→list,
+`update-pr-draft-release`, new-line UPM pins, supersede stale local branches). Toolkit dev
+carries this plan-record commit unpushed.
+
 Open carries, decisions pending: build-artifact-registry's wrapper-era 3.15 carry is RESOLVED
 — the cutover deleted the wrapper (its reusables pin `66df38b`, past the 3.13 pin), confirmed
 at the tier close. Still open: its origin remote still spells the ci-devkit SSH URL (redirects cover
