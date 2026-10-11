@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from release_devkit.verbs.lint_workflows import (
+from github_actions_toolkit.verbs.lint_workflows import (
     ACTIONLINT_BUILDS,
     MERGE_GATE_WORKFLOW,
     Problem,

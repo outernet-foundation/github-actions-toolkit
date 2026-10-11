@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from release_devkit import plan as plan_module
-from release_devkit.config import AppConfig, BuildArtifactConfig, PackageConfig, PublishConfig
-from release_devkit.manifests import DependencyEdge
-from release_devkit.plan import (
+from github_actions_toolkit import plan as plan_module
+from github_actions_toolkit.config import AppConfig, BuildArtifactConfig, PackageConfig, PublishConfig
+from github_actions_toolkit.manifests import DependencyEdge
+from github_actions_toolkit.plan import (
     PackagePlan,
     ResolvedDependency,
     compute_release_plan,
@@ -17,12 +17,12 @@ from release_devkit.plan import (
     parse_version,
     resolve_dependency_versions,
 )
-from release_devkit.manifests import SENTINEL_VERSION
+from github_actions_toolkit.manifests import SENTINEL_VERSION
 
 
 def test_latest_version_skips_prerelease_tags(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "release_devkit.plan.list_tag_versions",
+        "github_actions_toolkit.plan.list_tag_versions",
         preview_and_stable_tags,
     )
 
@@ -31,7 +31,7 @@ def test_latest_version_skips_prerelease_tags(monkeypatch: pytest.MonkeyPatch) -
 
 def test_latest_version_returns_none_when_no_stable_tag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "release_devkit.plan.list_tag_versions",
+        "github_actions_toolkit.plan.list_tag_versions",
         prerelease_only_tags,
     )
 
@@ -40,7 +40,7 @@ def test_latest_version_returns_none_when_no_stable_tag(monkeypatch: pytest.Monk
 
 def test_latest_version_in_line_filters_to_declared_line(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "release_devkit.plan.list_tag_versions",
+        "github_actions_toolkit.plan.list_tag_versions",
         multi_line_tags,
     )
 

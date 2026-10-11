@@ -7,8 +7,8 @@ import typer
 from bashrun.bash import bash, bash_check, bash_output
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-from release_devkit.config import Settings
-from release_devkit.verbs.release import delete_draft_release
+from github_actions_toolkit.config import Settings
+from github_actions_toolkit.verbs.release import delete_draft_release
 
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 

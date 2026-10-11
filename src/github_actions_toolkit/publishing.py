@@ -9,9 +9,9 @@ from typing import Protocol
 
 from bashrun.bash import bash, bash_output
 
-from release_devkit.csproj import load_project_roots, read_package_references
-from release_devkit.manifests import NpmManifest, SENTINEL_VERSION
-from release_devkit.plan import ResolvedDependency
+from github_actions_toolkit.csproj import load_project_roots, read_package_references
+from github_actions_toolkit.manifests import NpmManifest, SENTINEL_VERSION
+from github_actions_toolkit.plan import ResolvedDependency
 
 NUGET_SOURCE = "https://api.nuget.org/v3/index.json"
 PYPI_SIMPLE_INDEX = "https://pypi.org/simple/"

@@ -1,5 +1,5 @@
 [project]
-name = "release-devkit"
+name = "github-actions-toolkit"
 version = "0.0.0.dev0"
 description = "Publication machinery: per-package tag ledger, path-diff change detection, ephemeral version patching, and registry adapters (nuget, npm/UPM, PyPI) driven by a declarative consumer-owned config"
 requires-python = ">=3.13"
@@ -28,19 +28,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
-free-disk-space = "release_devkit.verbs.free_disk_space:app"
-lint-workflows = "release_devkit.verbs.lint_workflows:app"
-matrix = "release_devkit.verbs.matrix:app"
-merge-gate = "release_devkit.verbs.merge_gate:app"
-release = "release_devkit.verbs.release:app"
-validate-release-plan = "release_devkit.verbs.validate_release_plan:app"
+free-disk-space = "github_actions_toolkit.verbs.free_disk_space:app"
+lint-workflows = "github_actions_toolkit.verbs.lint_workflows:app"
+matrix = "github_actions_toolkit.verbs.matrix:app"
+merge-gate = "github_actions_toolkit.verbs.merge_gate:app"
+release = "github_actions_toolkit.verbs.release:app"
+validate-release-plan = "github_actions_toolkit.verbs.validate_release_plan:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/release_devkit"]
-include = [
-    "src/release_devkit/py.typed",
-    "src/release_devkit/verbs/zizmor.yaml",
-]
+packages = ["src/github_actions_toolkit"]
 
 [tool.basedpyright]
 venvPath = "."

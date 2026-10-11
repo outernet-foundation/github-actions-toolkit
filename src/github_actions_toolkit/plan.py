@@ -6,8 +6,8 @@ from pathlib import Path
 
 from bashrun.bash import bash_check, bash_output
 
-from release_devkit.config import PublishConfig
-from release_devkit.manifests import DependencyEdge, resolve_edges
+from github_actions_toolkit.config import PublishConfig
+from github_actions_toolkit.manifests import DependencyEdge, resolve_edges
 
 UNCHANGED_FALLBACK_VERSION = "0.0.0"
 

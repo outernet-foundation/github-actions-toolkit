@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from release_devkit.config import load_config
+from github_actions_toolkit.config import load_config
 
 
 def write_config(tmp_path: Path, payload: dict[str, object]) -> Path:
@@ -123,7 +123,7 @@ def test_load_config_rejects_malformed_major_minor(tmp_path: Path):
 REPO_CONFIG = Path(__file__).resolve().parent.parent / "release-devkit.yaml"
 
 
-def test_repo_release_devkit_yaml_loads() -> None:
+def test_repo_github_actions_toolkit_yaml_loads() -> None:
     config = load_config(REPO_CONFIG)
 
     assert config.packages == {}

@@ -5,8 +5,8 @@ from typing import Annotated
 
 import typer
 
-from release_devkit.config import DEFAULT_CONFIG_PATH, load_config
-from release_devkit.plan import compute_release_plan
+from github_actions_toolkit.config import DEFAULT_CONFIG_PATH, load_config
+from github_actions_toolkit.plan import compute_release_plan
 
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 

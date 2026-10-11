@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from bashrun.bash import bash
 
-from release_devkit.config import PackageConfig
-from release_devkit.manifests import SENTINEL_VERSION, resolve_edges
+from github_actions_toolkit.config import PackageConfig
+from github_actions_toolkit.manifests import SENTINEL_VERSION, resolve_edges
 
 
 def npm_package(name: str, identity: str) -> PackageConfig:

@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from release_devkit.config import AppConfig, BuildArtifactConfig, PublishConfig
-from release_devkit.plan import ReleasePlan
-from release_devkit.verbs import release as release_module
-from release_devkit.verbs.release import DEV_DRAFT_TAG, ReleaseChannel
+from github_actions_toolkit.config import AppConfig, BuildArtifactConfig, PublishConfig
+from github_actions_toolkit.plan import ReleasePlan
+from github_actions_toolkit.verbs import release as release_module
+from github_actions_toolkit.verbs.release import DEV_DRAFT_TAG, ReleaseChannel
 
 HEAD_SHA = "1111111111111111111111111111111111111111"
 CERTIFIED_SHA = "abcdef1234567890abcdef1234567890abcdef12"

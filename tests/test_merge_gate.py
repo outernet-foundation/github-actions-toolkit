@@ -3,7 +3,7 @@ from collections.abc import Callable, Mapping, Sequence
 
 import pytest
 
-from release_devkit.verbs import merge_gate
+from github_actions_toolkit.verbs import merge_gate
 
 HEAD_SHA = "a" * 40
 GREEN_ROLLUP = [{"name": "lint-workflows", "status": "COMPLETED", "conclusion": "SUCCESS"}]

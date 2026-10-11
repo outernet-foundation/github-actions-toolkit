@@ -19,9 +19,14 @@ from build_artifact_registry.builds import list_build_tags, pull_artifact
 from build_artifact_registry.setup_oras import install_oras
 from pydantic import BaseModel, model_validator
 
-from release_devkit.config import DEFAULT_CONFIG_PATH, PublishConfig, Settings, load_config
-from release_devkit.plan import UNCHANGED_FALLBACK_VERSION, ReleasePlan, compute_release_plan, get_latest_version
-from release_devkit.publishing import build_registries
+from github_actions_toolkit.config import DEFAULT_CONFIG_PATH, PublishConfig, Settings, load_config
+from github_actions_toolkit.plan import (
+    UNCHANGED_FALLBACK_VERSION,
+    ReleasePlan,
+    compute_release_plan,
+    get_latest_version,
+)
+from github_actions_toolkit.publishing import build_registries
 
 DEV_DRAFT_TAG = "dev-builds"
 DIGEST_PROJECT = "images-digests"

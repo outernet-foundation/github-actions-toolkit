@@ -7,8 +7,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from release_devkit.config import PackageConfig
-from release_devkit.csproj import load_project_roots, read_package_references
+from github_actions_toolkit.config import PackageConfig
+from github_actions_toolkit.csproj import load_project_roots, read_package_references
 
 DEPENDENCY_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*")
 # Same-unit dependency sentinel: authored in manifests, injected with the event version at publish.

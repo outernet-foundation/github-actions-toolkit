@@ -9,8 +9,8 @@ from typing import Annotated
 import typer
 from pydantic import TypeAdapter, ValidationError
 
-from release_devkit.config import DEFAULT_CONFIG_PATH, AppConfig, PublishConfig, load_config
-from release_devkit.plan import get_latest_version, latest_version_in_line, next_version
+from github_actions_toolkit.config import DEFAULT_CONFIG_PATH, AppConfig, PublishConfig, load_config
+from github_actions_toolkit.plan import get_latest_version, latest_version_in_line, next_version
 
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 

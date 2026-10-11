@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from release_devkit.config import AppConfig, BuildArtifactConfig, PackageConfig, PublishConfig
-from release_devkit.plan import PackagePlan, ReleasePlan, ResolvedDependency
-from release_devkit.publishing import (
+from github_actions_toolkit.config import AppConfig, BuildArtifactConfig, PackageConfig, PublishConfig
+from github_actions_toolkit.plan import PackagePlan, ReleasePlan, ResolvedDependency
+from github_actions_toolkit.publishing import (
     NpmRegistry,
     NuGetRegistry,
     PyPIRegistry,
@@ -15,8 +15,8 @@ from release_devkit.publishing import (
     resolve_publish_versions,
     semver_dev_version,
 )
-from release_devkit.verbs import release as release_module
-from release_devkit.verbs.release import DEV_DRAFT_TAG, DigestEntry, ReleaseChannel
+from github_actions_toolkit.verbs import release as release_module
+from github_actions_toolkit.verbs.release import DEV_DRAFT_TAG, DigestEntry, ReleaseChannel
 
 MERGE_SHA = "654321abcdef0987654321abcdef0987654321"
 CERTIFIED_SHA = "abcdef1234567890abcdef1234567890abcdef12"

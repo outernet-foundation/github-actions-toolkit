@@ -7,8 +7,8 @@ import yaml
 from pydantic import TypeAdapter
 from typer.testing import CliRunner, Result
 
-from release_devkit.verbs import matrix
-from release_devkit.verbs.matrix import app
+from github_actions_toolkit.verbs import matrix
+from github_actions_toolkit.verbs.matrix import app
 
 CAPTURE_TOOL_APP: dict[str, object] = {
     "path": "apps/CaptureTool",
@@ -46,7 +46,7 @@ def invoke(
     tags: dict[str, str] | None = None,
     config_path: Path | None = None,
 ) -> tuple[Result, str]:
-    monkeypatch.setattr("release_devkit.plan.bash_output", TagRecorder(outputs=tags or {}))
+    monkeypatch.setattr("github_actions_toolkit.plan.bash_output", TagRecorder(outputs=tags or {}))
     output_file = tmp_path / "github-output"
     output_file.write_text("", encoding="utf-8")
     monkeypatch.setenv("GITHUB_OUTPUT", str(output_file))
@@ -155,7 +155,7 @@ def test_two_apps_stamp_their_own_versions(monkeypatch: pytest.MonkeyPatch, tmp_
 
 def test_tag_math_runs_once_per_app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     tag_recorder = TagRecorder(outputs={"capture-tool-v": "capture-tool-v0.2.7\n"})
-    monkeypatch.setattr("release_devkit.plan.bash_output", tag_recorder)
+    monkeypatch.setattr("github_actions_toolkit.plan.bash_output", tag_recorder)
     output_file = tmp_path / "github-output"
     output_file.write_text("", encoding="utf-8")
     monkeypatch.setenv("GITHUB_OUTPUT", str(output_file))
@@ -215,7 +215,7 @@ def test_malformed_json_fails_loudly(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 
 def test_stdout_when_github_output_unset(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
-    monkeypatch.setattr("release_devkit.plan.bash_output", TagRecorder(outputs={}))
+    monkeypatch.setattr("github_actions_toolkit.plan.bash_output", TagRecorder(outputs={}))
 
     result = CliRunner().invoke(app, ["--config", str(write_config(tmp_path))], input='[{"targets": "player"}]')
 
