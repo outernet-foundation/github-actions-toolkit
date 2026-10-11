@@ -136,7 +136,7 @@ def next_version(major_minor: str, last_in_line: str | None, last_overall: str |
     if last_overall is not None and parse_version(last_overall)[:2] > line:
         raise ValueError(
             f"{subject}: declared major.minor {major_minor} is below tags version {last_overall}; "
-            "bump major_minor in release-devkit.yaml"
+            "bump major_minor in publish.yml"
         )
     if last_in_line is None:
         return f"{line[0]}.{line[1]}.0"

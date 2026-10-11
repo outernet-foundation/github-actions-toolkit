@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings
 from strictyaml import load as load_strict_yaml
 
-DEFAULT_CONFIG_PATH = Path("release-devkit.yaml")
+DEFAULT_CONFIG_PATH = Path("publish.yml")
 KNOWN_REGISTRIES = frozenset({"nuget", "npm", "pypi"})
 
 

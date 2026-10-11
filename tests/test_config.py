@@ -8,7 +8,7 @@ from github_actions_toolkit.config import load_config
 
 
 def write_config(tmp_path: Path, payload: dict[str, object]) -> Path:
-    config_path = tmp_path / "release-devkit.yaml"
+    config_path = tmp_path / "publish.yml"
     config_path.write_text(
         yaml.safe_dump(payload, default_flow_style=False, sort_keys=False),
         encoding="utf-8",
@@ -64,7 +64,7 @@ def test_load_config_parses_packages(tmp_path: Path):
 
 
 def test_load_config_defaults_empty_collections(tmp_path: Path):
-    config_path = tmp_path / "release-devkit.yaml"
+    config_path = tmp_path / "publish.yml"
     config_path.write_text("", encoding="utf-8")
 
     config = load_config(config_path)
@@ -120,7 +120,7 @@ def test_load_config_rejects_malformed_major_minor(tmp_path: Path):
             load_config(write_config(tmp_path, payload))
 
 
-REPO_CONFIG = Path(__file__).resolve().parent.parent / "release-devkit.yaml"
+REPO_CONFIG = Path(__file__).resolve().parent.parent / "publish.yml"
 
 
 def test_repo_github_actions_toolkit_yaml_loads() -> None:
@@ -131,7 +131,7 @@ def test_repo_github_actions_toolkit_yaml_loads() -> None:
 
 
 def test_load_config_rejects_duplicate_keys(tmp_path: Path):
-    config_path = tmp_path / "release-devkit.yaml"
+    config_path = tmp_path / "publish.yml"
     config_path.write_text("built_images: a\nbuilt_images: b\n", encoding="utf-8")
 
     with pytest.raises(Exception, match=r"Duplicate key"):

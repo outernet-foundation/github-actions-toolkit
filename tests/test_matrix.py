@@ -34,7 +34,7 @@ class TagRecorder:
 
 def write_config(tmp_path: Path, apps: Mapping[str, object] | None = None) -> Path:
     document = {"apps": apps if apps is not None else {"capture-tool": CAPTURE_TOOL_APP}}
-    config_path = tmp_path / "release-devkit.yaml"
+    config_path = tmp_path / "publish.yml"
     config_path.write_text(yaml.safe_dump(document, default_flow_style=False, sort_keys=False), encoding="utf-8")
     return config_path
 
@@ -118,7 +118,7 @@ def test_unowned_project_builds_unversioned(monkeypatch: pytest.MonkeyPatch, tmp
 
 
 def test_docker_leg_without_project_passes_untouched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    empty_config = tmp_path / "release-devkit.yaml"
+    empty_config = tmp_path / "publish.yml"
     empty_config.write_text("", encoding="utf-8")
 
     result, output = invoke(
