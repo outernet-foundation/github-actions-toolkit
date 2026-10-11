@@ -77,9 +77,9 @@ shard merge. The landing's merge-gate run went red after the real steps — the 
 pre-`4e12952` pin takes this red-after-success; docker-devkit's workflows are already the
 post-migration shape, so a plain repin of its `uses:` refs to a fresh toolkit SHA (≥ `84b0e14`)
 is atomic-safe and clears both the 422 and the 3.15 stall — the cheap candidate before the
-sweep, same class as build-artifact-registry's carry below. The Phase 6 pilots and the Phase 7
-sweep follow.
-Phase 6 (bashrun pilot) in flight: PR #8 (`0.6.x`) open on dev, integrate green — the
+sweep, same class as build-artifact-registry's carry below. The Phase 7
+sweep follows, preceded by Phase 6's capture-tool pilot.
+Phase 6 (bashrun leg landed; the capture-tool pilot remains): PR #8 (`0.6.x`) open on dev, integrate green — the
 preflight and update-pr-draft-release reusables' first live consumer passes; the sidecar
 relocked onto python-devkit `0.3.0.dev38096025533` (ci-devkit dissolved out of the lock,
 Phase 5's claim confirmed live); `scripts/preflight.py` is the two-line sidecar dogfood the
@@ -163,22 +163,28 @@ PR-number parse. Alternatives considered and rejected by operator ruling as ugly
 two-composites split (the seam-law fundamentalist shape — `release-dev`/`release-stable`,
 channel hard-coded per file, caller spelling the choice as the reference) and the prior
 session's env+bash-branch draft (aborted then, rejected on re-derivation). Local
-verification: lint-workflows green over the modified composite, 157 tests pass.
+verification: lint-workflows green over the modified composite, 157 tests pass. Live-certified
+afterward on both channels: the landing's dev job ran dev, the re-promotion's stable job ran
+stable — each boolean-era failure exercised in its corrected direction.
 
-Recovery sequence (fix landed as `bdb1e2a`, pushed — toolkit dev through `8ac57f2`):
-bashrun repins its `uses:` refs through the gate, flipping both delivery jobs' `with:` from
-`stable: …` to `channel: dev`/`channel: stable` atomically with the SHA bump (branch
-`toolkit-channel-input` off dev's `cc809cb`), and — operator ruling riding the same landing —
-bumps `major_minor` 0.7 → 0.8 for the retry, so the landing's dev channel publishes the first
-`0.8.0.dev{count}`; then the
-operator re-promotes `dev:main` (fast-forward) and the stable channel runs its first
-correct pass — publishes `0.8.0`, tags `bashrun-v0.8.0`, cuts CalVer `2026.10.4`, resets
-`dev-builds`. Re-running 38107631822 is useless: a rerun re-executes the composite at the
-SHA cc809cb's release.yml pins (the broken v2), and release.yml has no workflow_dispatch
-trigger. Pilot state otherwise standing: preflight and the gate reusable certified on two
-landings; the composite dev channel certified (`0.7.0.dev83` live on PyPI); trusted
-publishing through composite-wrapped steps accepted; the stray `0.6.0` orphan stays by
-ruling; placeframe-capture-tool pilot and the Phase 7 sweep remain.
+Recovery executed green, end to end: PR #10 (`toolkit-channel-input`: repin to `8ac57f2`,
+both delivery jobs' `with:` flipped to `channel: dev`/`channel: stable`, `major_minor`
+0.7 → 0.8 riding the same landing) merged as `e9692f3`; the landing's dev channel published
+`bashrun 0.8.0.dev85` — the dev job running dev, the corrected direction of the 0.6.0-orphan
+failure; the operator re-promoted `dev:main` (fast-forward, main = dev = `e9692f3`) and the
+stable channel ran its first correct pass — published `bashrun 0.8.0` to PyPI, tagged
+`bashrun-v0.8.0`, cut CalVer `2026.10.5` (no `.4` exists — the failed promotion cut nothing),
+reset `dev-builds` — the stable job running stable, the corrected direction of the promotion
+failure. Re-running 38107631822 was useless and was not attempted: a rerun re-executes the
+composite at the SHA cc809cb's release.yml pins (the broken v2), and release.yml has no
+workflow_dispatch trigger. Pilot state closed: preflight and the gate reusable certified on
+three landings (PRs #8, #9, #10); the release composite certified on both channels
+(`0.8.0.dev85` and `0.8.0` live on PyPI); trusted publishing through composite-wrapped steps
+verified on both channels — the inline-verb fallback is dead; the first-ever promotion and
+stable pass landed green; the stray `0.6.0` orphan stays by ruling; placeframe-capture-tool
+pilot and the Phase 7 sweep remain. bashrun's local clone lags origin (checked out on
+`toolkit-channel-input`, dev ref at `cc809cb`) — the operator pulls before the next session
+touches it.
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
@@ -344,12 +350,11 @@ Supporting laws:
 
 - PyPI/npm/nuget trusted publishing accepts publishes through composite-wrapped steps
   (expected yes — identity binds to the job's workflow file; warehouse#11096 is about reusable
-  workflows). Verified once in the bashrun pilot. **Fallback if rejected**: release.yml keeps
-  inline verb steps; the release.yml half of the old verb-grammar lint revives; only the
-  wrapper dies.
-- `env` context in a composite step's `if:` (the NuGet login's presence gate): listed available
-  in the composite context set, but historically buggy on old runners — first live exercise on
-  the placeframe pilot leg (Phase 6).
+  workflows). Verified in the bashrun pilot on both channels — dev prerelease and stable
+  publish rode the composite onto PyPI; the inline-verb fallback is dead.
+- `env` context in a composite step's `if:` (the NuGet login's presence gate): the false half
+  (absent `NUGET_USER`, login skipped) live-exercised on every bashrun composite run; the true
+  half (the login actually gating on) awaits the placeframe pilot leg.
 
 ## Phase 3 — unity-devkit (domain purification + renames)
 
