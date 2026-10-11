@@ -78,8 +78,8 @@ pre-`4e12952` pin takes this red-after-success; docker-devkit's workflows are al
 post-migration shape, so a plain repin of its `uses:` refs to a fresh toolkit SHA (≥ `84b0e14`)
 is atomic-safe and clears both the 422 and the 3.15 stall — the cheap candidate before the
 sweep, same class as build-artifact-registry's carry below. The Phase 7
-sweep follows, preceded by Phase 6's capture-tool pilot.
-Phase 6 (bashrun leg landed; the capture-tool pilot remains): PR #8 (`0.6.x`) open on dev, integrate green — the
+sweep follows.
+Phase 6 (bashrun leg landed; the capture-tool pilot cancelled by the ruling below): PR #8 (`0.6.x`) open on dev, integrate green — the
 preflight and update-pr-draft-release reusables' first live consumer passes; the sidecar
 relocked onto python-devkit `0.3.0.dev38096025533` (ci-devkit dissolved out of the lock,
 Phase 5's claim confirmed live); `scripts/preflight.py` is the two-line sidecar dogfood the
@@ -181,19 +181,34 @@ workflow_dispatch trigger. Pilot state closed: preflight and the gate reusable c
 three landings (PRs #8, #9, #10); the release composite certified on both channels
 (`0.8.0.dev85` and `0.8.0` live on PyPI); trusted publishing through composite-wrapped steps
 verified on both channels — the inline-verb fallback is dead; the first-ever promotion and
-stable pass landed green; the stray `0.6.0` orphan stays by ruling; placeframe-capture-tool
-pilot and the Phase 7 sweep remain. bashrun's local clone lags origin (checked out on
-`toolkit-channel-input`, dev ref at `cc809cb`) — the operator pulls before the next session
-touches it.
+stable pass landed green; the stray `0.6.0` orphan stays by ruling. bashrun's local clone lags
+origin (checked out on `toolkit-channel-input`, dev ref at `cc809cb`) — the operator pulls
+before the next session touches it.
+
+Operator rulings (2026-10-11 session): the capture-tool pilot is CANCELLED — Phase 7 runs as a
+straight DAG sweep, and the reusables no landing has exercised in consumer shape (mirror, the
+unity/docker build reusables, the per-leg stamping path) certify live at their first swept
+consumers instead; the unity runner ≥ 2.336.0 gate moves with them (unity-devkit's own
+self-cutover is the first unity-legged cutover on that pool). And every repo goes all the way
+to main during the sweep: land on dev (its own gate, or operator push for a repo's own
+landing), promote dev → main (fast-forward, operator-owned), let the stable channel publish the
+new line — the "sweep deliberately does NOT promote" law is dead. Each repo relocks onto the
+latest published versions of every dependency at its cutover: stable spellings once the
+upstream has promoted, dev prereleases before that; floors may keep the `>=X.Y.Z.dev0`
+spelling. The sweep opened with build-artifact-registry's self-cutover on branch
+`toolkit-cutover` (consumer end-state workflows at toolkit `66df38b`, wrapper action deleted,
+config migrated to `registry:`+`identity:`, sidecar relocked onto the python-devkit 0.3 line,
+deptry self-declaration deleted, main lock refreshed to latest) — handed to the operator for
+push, green, merge, and promotion.
+
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
 discovers the interpreter from the clone (the repo's own pin cannot reach it; `tools/devkit`
 lacks a `.python-version` as a secondary door; its repo CI keeps the hand-written shape
-until the Phase 7 sweep). Candidates: wrapper bump to the pushed head `3268439` (requires the
-merge-gate wake fix and `release-devkit.yaml` migration to `registry:`+`identity:` — the new loader
-hard-flips the old `registries:` spelling) vs job-level `python-version` pins on the
-setup-uv steps. Also: its origin remote still spells the ci-devkit SSH URL (redirects cover
+until the Phase 7 sweep). Resolution rides the sweep's first node — the cutover's reusables
+pin `66df38b` (past the 3.13 pin), so the wrapper-driven jobs die with the wrapper itself.
+Also: its origin remote still spells the ci-devkit SSH URL (redirects cover
 it; rename housekeeping is host-side). Correction of an earlier record: `gh` is NOT blind to
 Actions runs — the App token minted via `uv run --project /pulsar/scripts
 mint-github-app-token` reads run lists, views, and logs on the public repos; the prior
@@ -222,8 +237,8 @@ forever, silently. Fix candidates: checksums as repo constants (zizmor pattern) 
 
 Carried risks, unobserved: the unity self-hosted fleet's runner version needs ≥ 2.336.0 for
 `$/` (the unity legs execute the install trio on that pool once the consumer-half flip
-lands) — the capture-tool pilot surfaces it; Phase 3's landing did not (its unity legs still
-raw-checkout). The hosted half is retired:
+lands) — the first unity-legged cutover on that pool surfaces it (unity-devkit's own
+self-cutover; Phase 3's unity legs were still raw-checkout). The hosted half is retired:
 PR #3's green re-run certified the install trio's first full live pass (`$/`
 self-reference resolution from a called reusable works on a current hosted runner).
 
@@ -354,7 +369,7 @@ Supporting laws:
   publish rode the composite onto PyPI; the inline-verb fallback is dead.
 - `env` context in a composite step's `if:` (the NuGet login's presence gate): the false half
   (absent `NUGET_USER`, login skipped) live-exercised on every bashrun composite run; the true
-  half (the login actually gating on) awaits the placeframe pilot leg.
+  half (the login actually gating on) awaits placeframe's swept leg.
 
 ## Phase 3 — unity-devkit (domain purification + renames)
 
@@ -409,8 +424,11 @@ Supporting laws:
 
 - **bashrun** after Phase 2: exercises preflight + merge-gate + the release composite; carries
   the PyPI-through-composite verification gate (fallback decision point for release.yml).
-- **placeframe-capture-tool** after Phases 3–4: exercises mirror + preflight, unity build
-  (per-leg base-version stamping), docker build, update-pr-draft-release.
+  Landed and closed green on both channels (see Execution state).
+- **placeframe-capture-tool** after Phases 3–4: CANCELLED by operator ruling — capture-tool is
+  a plain Phase 7 sweep repo; its would-be certifications (mirror + preflight, unity build
+  per-leg base-version stamping, docker fanout, update-pr-draft-release in the build context)
+  ride the sweep's first exercising consumers.
 
 ## Phase 7 — fleet sweep (folds ci-refresh-seed; the old doc's mechanics re-aimed from
 "wrapper re-pin + grammar rewrite" to "atomic cutover to reusables/composite + SHA bump")
@@ -446,9 +464,13 @@ consistent until the switch.
 
 **Sequencing laws.** Prereleases must exist on the registry before downstream relocks reference
 them; devkit repos merge and are pushed first (pins must exist on the remote before consumer CI
-runs); one repo = one PR landing via its own merge-gate; the sweep deliberately does NOT
-promote to stable (promotions happen naturally later; green sweep then promote `dev` → `main`
-where receivers live on the default branch); update stale agent docs alongside code (instance:
+runs); one repo = one PR landing via its own merge-gate; every repo completes through `main`
+during the sweep — land on `dev`, promote `dev` → `main` (fast-forward, operator-owned), let
+the stable channel publish the new line — and each repo relocks onto the latest published
+versions of every dependency at its cutover (stable spellings once the upstream has promoted,
+dev prereleases before that; floors may keep the `>=X.Y.Z.dev0` spelling; receivers on the
+default branch see stable lines as each upstream promotes); update stale agent docs alongside
+code (instance:
 build-artifact-registry's AGENTS.md names the binding repo by its abandoned intermediate
 spelling in the release-flow section).
 
@@ -457,8 +479,8 @@ github-actions-toolkit's own files beyond `$/` refs — none needed, python/dock
 repos themselves), then simple publishers (logger-conf, openapi-client-codegen,
 pydantic-settings-pulumi, lbe-toolkit), the infra trio (infra-github-org,
 infra-github-runners, infra-rathole — preflight + merge-gate only), app repos
-(Make-it-Sing, Nessle, ObserveThing, StatefulUnity), placeframe-capture-tool is the Phase 6
-pilot, placeframe last (most local surface).
+(Make-it-Sing, Nessle, ObserveThing, StatefulUnity, placeframe-capture-tool), placeframe
+last (most local surface).
 
 **Per-repo specifics (from reconnaissance; mechanics re-aimed).** placeframe: 8×
 `registries:`→`registry:`+`identity:`, drop `ci_workflow:`, `built_images: true` confirmed,
