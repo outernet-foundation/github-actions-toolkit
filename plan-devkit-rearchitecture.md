@@ -165,13 +165,14 @@ channel hard-coded per file, caller spelling the choice as the reference) and th
 session's env+bash-branch draft (aborted then, rejected on re-derivation). Local
 verification: lint-workflows green over the modified composite, 157 tests pass.
 
-Recovery sequence (fix landed as `bdb1e2a`, operator push pending): bashrun repins its
-`uses:` refs through the gate, flipping both delivery jobs' `with:` from `stable: …` to
-`channel: dev`/`channel: stable` atomically with the SHA bump (branch off the current dev
-tip — local clones lag origin after runner-side merges; the operator pulls, the agent never
-fetches and never uses prepo); the landing's dev channel publishes the next `0.7.0.dev{count}`; then the
+Recovery sequence (fix landed as `bdb1e2a`, pushed — toolkit dev through `8ac57f2`):
+bashrun repins its `uses:` refs through the gate, flipping both delivery jobs' `with:` from
+`stable: …` to `channel: dev`/`channel: stable` atomically with the SHA bump (branch
+`toolkit-channel-input` off dev's `cc809cb`), and — operator ruling riding the same landing —
+bumps `major_minor` 0.7 → 0.8 for the retry, so the landing's dev channel publishes the first
+`0.8.0.dev{count}`; then the
 operator re-promotes `dev:main` (fast-forward) and the stable channel runs its first
-correct pass — publishes `0.7.0`, tags `bashrun-v0.7.0`, cuts CalVer `2026.10.4`, resets
+correct pass — publishes `0.8.0`, tags `bashrun-v0.8.0`, cuts CalVer `2026.10.4`, resets
 `dev-builds`. Re-running 38107631822 is useless: a rerun re-executes the composite at the
 SHA cc809cb's release.yml pins (the broken v2), and release.yml has no workflow_dispatch
 trigger. Pilot state otherwise standing: preflight and the gate reusable certified on two
