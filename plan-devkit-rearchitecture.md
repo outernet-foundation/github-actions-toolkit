@@ -53,8 +53,24 @@ pin bumped to the certified head `d9826576a567b0081dd0f705f4a7eb8a9d2a0646` — 
 its merge-gate.yml to the labeled-only wake (the new lint bans `workflow_run` outright) and
 put `--locked` on every `uv run`; `major_minor` 0.3 on both `unity-devkit` and `playerbuild`;
 AGENTS.md rewritten (the consumer template section replaced by the reusable reference, the
-env contract and version-stamping constraints updated). Open to land: the relock onto the
-published floor (`uv lock`), the full preflight battery, then push/PR/land — the `0.3` dev
+env contract and version-stamping constraints updated). The relock landed
+(`build-artifact-registry==0.2.0.dev38099046697`, the highest on PyPI — 0.2 stable is not yet
+promoted, the prerelease line is the intended target; `ci-devkit` survives in the graph only as
+stale python-devkit 0.1.15's transitive, whose floor bump is sweep work) and the full battery is
+green locally: the python battery (format, basedpyright strict, deptry, lock check, 42 tests),
+`lint-workflows` and `validate-release-plan` against a d982657 clone. The battery surfaced an
+unrecorded consequence of the wrapper bump: the certified head's zizmor (v1.30.1, `rules: {}`)
+red-flags the transitional hand-spelled files — unpinned-uses (the checkout/setup-uv/
+create-github-app-token tag refs), self-repository (the `./` wrapper), github-app (the unscoped
+token mint). Fixed transitionally, phase-scoped: the three actions SHA-pinned with spellings
+mirrored from the toolkit's own files at d982657, the wrapper ref flipped to
+`$/.github/actions/…` (hosted jobs only; the unity leg's raw checkout is untouched, so the
+runner-version risk still defers to the first reusable-riding unity leg), the mint scoped
+`permission-contents: write` / `permission-pull-requests: read`, the wrapper's clone URL
+canonicalized to `github-actions-toolkit` (the redirect had been masking the abandoned spelling).
+Fleet consequence, standing: every consumer that bumps its wrapper past d982657 before its
+cutover hits the same wall — wrapper bump and cutover stay one atomic step per repo (the sweep's
+plan already spells this). Open to land: operator push + PR + `ready-to-merge`; the `0.3` dev
 prerelease rides its own release.yml. Open carries, decisions pending: build-artifact-
 registry's own CI resolves 3.15 in the wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
