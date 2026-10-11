@@ -19,9 +19,9 @@ on dev — certified head `d982657`, landed by the operator's direct push (see t
 ruling in the status paragraph and AGENTS.md "Landing changes") — riding the matrix/version
 refactor, the run-fact partition, the `$/` install-trio flip, and the relock onto
 python-devkit `>=0.3.0.dev0`. The repo's current AGENTS.md describes the landed binding
-surface in full; the plan does not repeat it. dev carries four unpushed commits past
-`d982657` (the unity legs' git safe-directory pre-step + its AGENTS.md row, plus plan
-records) — pushes are operator-owned. Standing rulings from the landed phases: version
+surface in full; the plan does not repeat it. dev carries eight unpushed commits past
+`d982657` (the unity legs' git safe-directory pre-step + its AGENTS.md row, the direct-push
+landing ruling, and plan records) — pushes are operator-owned. Standing rulings from the landed phases: version
 floors spell `>=X.Y.Z.dev0` (PEP 440 — a `.dev` prerelease cannot resolve under a short
 base, and a run-id-keyed floor would die on the first count-keyed republish); the old
 ci-devkit distribution is frozen forever, no yank; preflight's sequential
@@ -80,10 +80,13 @@ build-artifact-registry branch `cache-self-auth`, battery green: cache restore a
 authenticate through the neutral chain on entry (mirroring builds.py — same seam, same rule),
 and restore treats a registry refusal (denied/unauthorized/forbidden in the pull output) as a
 loud FATAL, never a miss — the distinction only becomes meaningful authenticated (anonymous
-ghcr answers "denied" to nonexistent packages too). Sequence: land it through its merge-gate
-(its release.yml then publishes a fresh 0.2.0.devN on the same unpromoted base — every
-`>=0.2.0.dev0` floor already admits it), relock unity-devkit, re-run PR #8; then operator
-`ready-to-merge`, and the `0.3` dev prerelease rides its own release.yml. Open carries,
+ghcr answers "denied" to nonexistent packages too). The fix is landed and released: a fresh
+`0.2.0.devN` prerelease sits on PyPI on the same unpromoted base (every `>=0.2.0.dev0` floor
+already admits it). Remaining Phase 3 steps, in order: relock unity-devkit onto the fresh
+prerelease (`uv lock` — the exact pin moves, the floor does not), operator pushes to PR #8
+for the re-run, `ready-to-merge` once green and rebased; the `0.3` dev prerelease rides its
+own release.yml and closes the phase. Phase 4 (docker-devkit) follows per the plan's order.
+Open carries,
 decisions pending: build-artifact-
 registry's own CI resolves 3.15 in the wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
