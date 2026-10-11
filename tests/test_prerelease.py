@@ -101,10 +101,6 @@ class FakePublishRegistry:
         return f"{base_version}-dev.{commit_count}" if dev else base_version
 
 
-def noop(*args: object, **kwargs: object) -> None:
-    pass
-
-
 def make_builds() -> list[BuildArtifactConfig]:
     return [BuildArtifactConfig(project="MyApp", platform="AndroidMobile", file="MyApp-AndroidMobile.apk")]
 
@@ -184,7 +180,6 @@ def patch_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig, draft_
 def patch_publish_internals(monkeypatch: pytest.MonkeyPatch) -> tuple[FakePublishRegistry, CallRecorder]:
     npm_registry = FakePublishRegistry()
     create_and_push_tag = CallRecorder()
-    monkeypatch.setattr(release_module, "configure_git", noop)
     monkeypatch.setattr(release_module, "build_registries", FixedReturn({"pypi": npm_registry}))
     monkeypatch.setattr(release_module, "create_and_push_tag", create_and_push_tag)
     return npm_registry, create_and_push_tag

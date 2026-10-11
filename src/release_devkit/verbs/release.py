@@ -68,16 +68,13 @@ def main(
     channel: Annotated[ReleaseChannel, typer.Option(help="Delivery channel: pr draft, dev prerelease, stable release")],
     config: Annotated[Path, typer.Option(help="Publish configuration YAML")] = DEFAULT_CONFIG_PATH,
 ) -> None:
-    create_or_update_release(config, channel)
-
-
-def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
     # Read the runner settings and the publish config
     settings = Settings.model_validate({})
     publish_config = load_config(config)
 
     # Make git trust the workspace before any git call
-    configure_git(settings.github_workspace)
+    # Re-set safe.directory in the real HOME, where checkout only wrote a temporary one
+    bash(f"git config --global --add safe.directory {shlex.quote(settings.github_workspace)}")
 
     # Publish every changed package to its registry and tag the stable versions
     release_plan = compute_release_plan(publish_config)
@@ -167,13 +164,22 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
     if publish_config.built_images:
         images = pull_digest_manifest(settings, shelf, sha)
         if images:
-            images_rows = [
-                [
-                    image_display_name(entry.ref, repository),
-                    f"[`{(tag := tree_tag(entry))}`]({package_version_url(settings, entry, tag)})",
-                ]
-                for entry in sorted(images.values(), key=lambda entry: entry.ref)
-            ]
+            images_rows: list[list[str]] = []
+            for entry in sorted(images.values(), key=lambda entry: entry.ref):
+                # Strip the repository namespace every ref must live under
+                repository_prefix = f"ghcr.io/{repository}/"
+                if not entry.ref.startswith(repository_prefix):
+                    raise ValueError(f"image ref '{entry.ref}' does not live under ghcr.io/{repository}")
+                display_name = entry.ref[len(repository_prefix) :]
+
+                # Link the tree- tag to that exact package version's page
+                image_tag = next(candidate for candidate in entry.tags if candidate.startswith("tree-"))
+                owner, package = entry.ref[len("ghcr.io/") :].split("/", 1)
+                package_path = package.replace("/", "%2F")
+                page = f"https://github.com/{settings.github_repository}/pkgs/container/{package_path}"
+                version_id = package_version_id(owner, package, entry.digest)
+                url = f"{page}/{version_id}?tag={image_tag}" if version_id else page
+                images_rows.append([display_name, f"[`{image_tag}`]({url})"])
             blocks.append(f"{prefix} Built images\n{markdown_table(['Image', 'Tag'], images_rows)}")
 
     # Join the blocks into one section
@@ -204,11 +210,6 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
     # Reset the dev draft once the stable release is cut
     if channel == ReleaseChannel.STABLE:
         delete_draft_release(DEV_DRAFT_TAG, repository)
-
-
-def create_and_push_tag(tag: str) -> None:
-    bash(f"git tag {tag}")
-    bash(f"git push origin {tag}")
 
 
 def publish_packages(
@@ -383,22 +384,9 @@ def pull_digest_manifest(settings: Settings, shelf: str, sha: str) -> dict[str, 
     return merged
 
 
-def tree_tag(entry: DigestEntry) -> str:
-    return next(tag for tag in entry.tags if tag.startswith("tree-"))
-
-
-def image_display_name(ref: str, repository: str) -> str:
-    prefix = f"ghcr.io/{repository}/"
-    if not ref.startswith(prefix):
-        raise ValueError(f"image ref '{ref}' does not live under ghcr.io/{repository}")
-    return ref[len(prefix) :]
-
-
-def package_version_url(settings: Settings, entry: DigestEntry, tag: str) -> str:
-    owner, package = entry.ref[len("ghcr.io/") :].split("/", 1)
-    page = f"https://github.com/{settings.github_repository}/pkgs/container/{package.replace('/', '%2F')}"
-    version_id = package_version_id(owner, package, entry.digest)
-    return f"{page}/{version_id}?tag={tag}" if version_id else page
+def create_and_push_tag(tag: str) -> None:
+    bash(f"git tag {tag}")
+    bash(f"git push origin {tag}")
 
 
 def package_version_id(owner: str, package: str, digest: str) -> int | None:
@@ -425,8 +413,3 @@ def delete_draft_release(tag: str, repository: str) -> None:
         return
     # Omit --cleanup-tag, since unpublished drafts never materialize a tag
     bash(f"gh release delete {tag} --yes --repo {repository}")
-
-
-def configure_git(workspace: str) -> None:
-    # Re-set safe.directory in the real HOME, where checkout only wrote a temporary one
-    bash(f"git config --global --add safe.directory {shlex.quote(workspace)}")

@@ -67,7 +67,6 @@ def patch_stable_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig)
     monkeypatch.setenv("GITHUB_WORKSPACE", "/workspace")
     monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
     monkeypatch.setattr(release_module, "load_config", FixedReturn(config))
-    monkeypatch.setattr(release_module, "configure_git", noop)
     monkeypatch.setattr(release_module, "bash_check", FixedReturn(False))
 
     def dispatching_bash_output(command: str) -> str:
@@ -178,4 +177,4 @@ def test_release_stops_when_nothing_to_ship(monkeypatch: pytest.MonkeyPatch) -> 
 
     release_module.main(channel=ReleaseChannel.STABLE)
 
-    assert bash_recorder.calls == []
+    assert bash_recorder.calls == [("git config --global --add safe.directory /workspace",)]

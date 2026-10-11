@@ -112,7 +112,6 @@ def patch_context(
     monkeypatch.setenv("GITHUB_WORKSPACE", "/workspace")
     monkeypatch.setenv("GITHUB_REF", github_ref)
     monkeypatch.setattr(release_module, "load_config", FixedReturn(publish_config))
-    monkeypatch.setattr(release_module, "configure_git", FixedReturn(None))
     monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(ReleasePlan.empty()))
 
 
@@ -377,7 +376,7 @@ def test_update_pr_draft_refuses_non_pull_request_wake(monkeypatch: pytest.Monke
     with pytest.raises(IndexError):
         release_module.main(channel=ReleaseChannel.PR)
 
-    assert not bash_log.commands
+    assert bash_log.commands == ["git config --global --add safe.directory /workspace"]
 
 
 def test_update_pr_draft_writes_notes_file_without_recreating(monkeypatch: pytest.MonkeyPatch) -> None:
