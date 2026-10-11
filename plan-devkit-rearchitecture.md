@@ -655,6 +655,34 @@ The hosted half retired earlier: PR #3's green re-run certified the install trio
 live pass (`$/` self-reference resolution from a called reusable works on a current hosted
 runner).
 
+Session record (2026-10-11, Phase 8.1 executed): all five changes landed on local dev as five
+code commits plus AGENTS.md and this record. One plan-mechanic correction, verified against
+the live docs before writing: GitHub has NO comma-splitting in `runs-on` — a string is one
+label, so the plan's literal `self-hosted,unity` spelling would queue a job forever on a
+label no runner holds; the input is therefore a JSON array string (default `["ubuntu-latest"]`)
+consumed as `runs-on: ${{ fromJSON(inputs.runs-on) }}` (the docs' sanctioned mix-strings-and-
+variables array), and Make-it-Sing's 8.3 spelling is `["self-hosted", "unity"]`. Getters and
+every other reusable stay fixed, and the wipe-workspace/safe-directory pre-steps stay (inert
+on hosted, load-bearing on reused runners); lint-workflows (actionlint + zizmor) is green over
+the shape. The package rename (`release_devkit` → `github_actions_toolkit`, distribution
+`github-actions-toolkit`) is consumer-invisible — console-script names unchanged, uv.lock regen
+a pure name swap, wheel verified to still ship `py.typed`/`zizmor.yaml`/`third-party` with the
+redundant hatch `include` block deleted (this repo's Phase 7 hygiene instance). The
+`publish.yml` flip is hard (DEFAULT_CONFIG_PATH, the repo's own config `git mv`'d, plan error
+message, tests) — `built_images` now fails at load as an unknown key (tested, extra=forbid).
+`built_images` is deleted from PublishConfig; `IMAGE_MANIFEST_PATH = workloads/images.yml`
+(named contract with docker-devkit) keys the release verb's expectation, the loud edge re-keyed
+to the declaration's presence: manifest present + no digest shards (nor the bare fallback) at
+the certified SHA = red via the oras pull failure. The stale-spelling lint is dropped (constant,
+check, fixture) — zero `release-devkit` spellings survive in-repo. Battery green at the tip:
+preflight-python (161 tests, ruff/format/basedpyright/deptry), lint-workflows,
+validate-release-plan; the rename ripple was fixup-autosquashed so every intermediate commit is
+ruff-clean (targets verified branch-local first). Sandbox venv note: the rename hit the known
+stale-wrapper pitfall — `uv sync` does not regen console scripts when the version is unchanged,
+`uv sync --locked --reinstall-package github-actions-toolkit` materialized them; fresh installs
+immune. Operator sequence: push toolkit dev (its tip is the 8.3 resweep pin), then Phase 8.2
+(docker-devkit `0.4`).
+
 Ruled out (do not re-propose without new information): an added composite-lint layer
 (bettermarks/composite-action-lint surveyed).
 
