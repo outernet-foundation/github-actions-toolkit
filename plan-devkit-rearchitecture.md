@@ -537,13 +537,16 @@ code (instance:
 build-artifact-registry's AGENTS.md names the binding repo by its abandoned intermediate
 spelling in the release-flow section).
 
-**Sweep order.** Devkit self-cutovers first (build-artifact-registry,
+**Sweep order** (operator rulings 2026-10-11: the infra trio is SKIPPED entirely — its
+preflight/merge-gate adoption is dropped from this plan, and its unpushed `.python-version`
+pins ride each repo's next natural landing or an operator push; placeframe precedes
+placeframe-capture-tool because capture-tool consumes placeframe's UPM packages, so
+placeframe's new line must exist on the registry before capture-tool relocks onto it; Nessle,
+ObserveThing, StatefulUnity go last). Devkit self-cutovers first (build-artifact-registry,
 github-actions-toolkit's own files beyond `$/` refs — none needed, python/docker/unity/devkit
 repos themselves), then simple publishers (logger-conf, openapi-client-codegen,
-pydantic-settings-pulumi, lbe-toolkit), the infra trio (infra-github-org,
-infra-github-runners, infra-rathole — preflight + merge-gate only), app repos
-(Make-it-Sing, Nessle, ObserveThing, StatefulUnity, placeframe-capture-tool), placeframe
-last (most local surface).
+pydantic-settings-pulumi, lbe-toolkit), Make-it-Sing, placeframe, placeframe-capture-tool,
+then Nessle, ObserveThing, StatefulUnity.
 
 **Per-repo specifics (from reconnaissance; mechanics re-aimed).** placeframe: 8×
 `registries:`→`registry:`+`identity:`, drop `ci_workflow:`, `built_images: true` confirmed,
@@ -559,11 +562,7 @@ shape → green → merge-gate → evergreen `dev`; `built_images: true` confirm
 all three packages, delete legacy `publish-config.json`, npm identities
 `org.outernet.lbetoolkit[.livekit|.photon]`, then retire old ci.yml/release.yml.
 placeframe-capture-tool: app `builds` dict→list, add `update-pr-draft-release`, adopt new-line
-UPM pins (verify consumed set), supersede stale local branches. Infra trio: non-publishing
-(integrate + merge-gate only); canonicalize preflight onto `uv run preflight-python` (adds
-python-devkit dev-dep, follows python-devkit's new line); infra-github-org owns the
-`evergreen-dev` ruleset + merge-bot App + `UNITY_*` wiring; **inspect infra-github-org's tree before committing there — reconnaissance
-found `src/stacks/dev.py` locally modified, so re-verify current state**.
+UPM pins (verify consumed set), supersede stale local branches.
 
 **pyproject hygiene, every repo, every in-tree pyproject.** Delete deptry
 `known_first_party` self-declarations (instance: placeframe `build/pyproject.toml`;
