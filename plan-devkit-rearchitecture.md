@@ -510,6 +510,43 @@ per-repo `NUGET_USER` secret and MERGE_BOT/evergreen-dev wiring before labeling.
 unchanged (`backup-pre-review-rebase` in both repos, `backup-pre-cesium-drop` in placeframe);
 placeframe's `even-more-ci-fixes` remains redundant residue.
 
+Session record (2026-10-11, review restructure + oras fix): placeframe's branch was restructured
+for review — twelve commits to nine, tree-identical to `40b8aa43` (empty tree-diff proof, so the
+prior session's verification carries): the formatting fixup squashed into the port, the dead
+port-work expunged (the cesium trio and the `ci/preflight` port — deleted or absorbed by later
+commits, so the port carries only `publish_compose` + the stables relock and is retitled), the
+cesium doc-section add-then-delete pair collapsed into the agent-docs commit (its own commit
+dropped), the two cesium deletion commits merged into one pure-deletion commit, and the dead
+build-doc updates expunged from the docs commit; kept the relock chain, the `build/pyproject`
+dep evolution (each commit's lock coherence), and the root-`AGENTS.md` paragraph evolutions
+(true intermediates, not dead content). The operator pushed and opened PR #136; every job green
+except `update-pr-draft-release`, dead in 16s at `FileNotFoundError: 'oras'` —
+`pull_digest_manifest` (placeframe is the first `built_images: true` consumer of the pr channel)
+shells out to an oras binary nothing provisions: the reusable carries no ORAS step and the verb
+never installed it. Historical forensics (standing): the pr-draft job has NEVER run green
+anywhere — capture-tool's wrapper-era `update-release-devkit` branch (commits `31a929d`/
+`3007796`, Oct 6, never merged; residue to supersede at its cutover) failed three runs with the
+identical traceback, and bashrun's pilot green run never entered the oras path (no apps, no
+`built_images`) — the cancelled-pilot exposure ("reusables certify at their first swept
+consumers") fired here exactly as accepted. Nothing was lost; it was never there: every other
+oras-consuming verb in the fleet self-provisions in Python at point-of-use (docker-devkit
+`push_image_digests` — `bdaf6c6`, the "oras provisioning fix" prerelease capture-tool repinned
+at `043a726` — unity-devkit compile-check/build/install), and the release verb was the one
+without. Ruling executed, same pattern and NOT a YAML step: toolkit `5376786` "Provision oras
+before shelf pulls in the release verb" (`install_oras()` at the top of `stage_apps` and
+`pull_digest_manifest`; battery green; operator pushed; remote dev verified at that SHA).
+Placeframe repinned all 8 `uses:` refs `5e7212f` → `5376786`, squashed into the cutover commit
+(`4b8f08dc`, message respelled; the six later commits replayed; tree-delta exactly the pin
+lines; lint-workflows green) — tip `f6ad40bf`, backups `backup-pre-review-rebase-2` (=
+`40b8aa43`) and `backup-pre-repin` (= `86023cb8`). The operator force-pushed and the rerun went
+green end to end — the oras fix and the shard merge's first live exercise (a SHA's docker-leg
+shards enumerated and merged at pull time) both certified; the `pr-136` draft's content rode the
+green run. Residue, deferred by operator ruling: the draft release's FORMATTING is not what the
+operator intended — the discussion opens the NEXT session as its first item, before any landing
+step; the placeframe sequence then resumes where it stands (verify the per-repo `NUGET_USER`
+secret and MERGE_BOT/evergreen-dev wiring before labeling; the ruff-0.17/python-devkit
+`9945222` blocker unchanged). Toolkit dev carries this plan-record commit unpushed.
+
 Open carries, decisions pending: build-artifact-registry's wrapper-era 3.15 carry is RESOLVED
 — the cutover deleted the wrapper (its reusables pin `66df38b`, past the 3.13 pin), confirmed
 at the tier close. Still open: its origin remote still spells the ci-devkit SSH URL (redirects cover
