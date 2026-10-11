@@ -120,13 +120,15 @@ class NpmRegistry:
             command += f" --tag {NPM_DEV_DIST_TAG}"
         with ephemeral_manifest_patch(path, version, dependency_versions):
             try:
-                bash_output(command, cwd=path)
+                output = bash_output(command, cwd=path)
             except CalledProcessError as e:
                 stderr = e.stderr or ""
                 if "EPUBLISHCONFLICT" in stderr or "cannot publish over" in stderr:
                     print("  Version already published, skipping (idempotent)")
                 else:
                     raise
+            else:
+                print(output, end="")
         return version
 
 

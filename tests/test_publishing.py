@@ -38,8 +38,9 @@ PYPROJECT_WITH_SENTINELS = (
 
 
 class CommandRecorder:
-    def __init__(self) -> None:
+    def __init__(self, result: str = "") -> None:
         self.commands: list[str] = []
+        self.result = result
 
     def __call__(
         self,
@@ -50,7 +51,7 @@ class CommandRecorder:
         env: dict[str, str] | None = None,
     ) -> str:
         self.commands.append(command)
-        return ""
+        return self.result
 
 
 def write_manifest(tmp_path: Path) -> Path:
@@ -156,6 +157,17 @@ def test_npm_publish_without_dist_tag_leaves_latest_alone(tmp_path: Path, monkey
     NpmRegistry().publish(tmp_path, "0.2.1", {}, False, 0)
 
     assert recorder.commands == ["npm publish --access public --provenance --loglevel verbose"]
+
+
+def test_npm_publish_prints_the_command_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_manifest(tmp_path)
+    monkeypatch.setattr("release_devkit.publishing.bash_output", CommandRecorder("+ org.outernet.placeframe@0.2.1\n"))
+
+    NpmRegistry().publish(tmp_path, "0.2.1", {}, False, 0)
+
+    assert "+ org.outernet.placeframe@0.2.1" in capsys.readouterr().out
 
 
 class ConflictingCommand:
