@@ -444,8 +444,9 @@ pin-bump/doc-rename/repin commits dropped with the cutover commit pinning the re
 toolkit tip directly. Operator: push toolkit dev (one commit) before placeframe's PR runs
 CI, then placeframe's PR carries the nine-commit series.
 
-Session close (2026-10-11): operator adjustments to placeframe's branch are IN FLIGHT — the
-tips here are as-of-close; re-derive state from the repos before acting. As of close: toolkit
+Session close (2026-10-11): operator adjustments were in flight at this close; they landed as
+the next session's consolidation commits, and the record below carries the current tips. As
+of this close: toolkit
 dev = two prose commits ahead of origin/dev; placeframe's `uses:` pins and cutover commit
 message spell `5e7212f`, which stays valid once dev is pushed (an ancestor of the tip,
 prose-only delta — repin only if wanted). placeframe `toolkit-cutover` carries the nine-commit
@@ -498,6 +499,16 @@ console-script wrappers when the member's version is unchanged — `uv sync
 are written at first install). The two Dockerfile comments naming
 `build_scripts.placeframe.context_sha` were corrected to `docker_devkit.context_sha` (stale
 before this session — that module lives in docker-devkit).
+
+Session close (2026-10-11, consolidation): placeframe `toolkit-cutover` = `40b8aa43`, twelve
+commits on origin/dev, worktree clean; toolkit dev = three prose commits ahead (`7701c06`,
+`0ab1fc6`, `c5e49c1`). The full verification pair re-ran green at this final shape — ruff,
+format, basedpyright, pytest, lint-workflows, validate-release-plan, plus the sidecar end to
+end — so the prior close's re-run-before-labeling demand is satisfied. Operator sequence
+unchanged: push toolkit dev first, push the branch, open the PR, let CI certify, verify the
+per-repo `NUGET_USER` secret and MERGE_BOT/evergreen-dev wiring before labeling. Backups
+unchanged (`backup-pre-review-rebase` in both repos, `backup-pre-cesium-drop` in placeframe);
+placeframe's `even-more-ci-fixes` remains redundant residue.
 
 Open carries, decisions pending: build-artifact-registry's wrapper-era 3.15 carry is RESOLVED
 — the cutover deleted the wrapper (its reusables pin `66df38b`, past the 3.13 pin), confirmed
