@@ -145,25 +145,31 @@ executed the DEV channel and went green doing it (run 38107631822): it built
 published that version), it appended a dev-builds section, pushed no `bashrun-v0.7.0` tag,
 cut no CalVer release, and reset nothing. PyPI carries NO `0.7.0`.
 
-OPEN ISSUE (next session diagnoses; this one closed by operator ruling before landing a
-second fix): the release composite's channel selection from the `stable` boolean input.
-Composite inputs ride stringified inside `${{ }}` expressions, and both expression forms are
-now live-proven broken in opposite directions — v1 `inputs.stable && 'stable' || 'dev'`
-read the stringified `"false"` as truthy (the dev job ran stable at PR #8's landing,
-publishing the untagged `0.6.0` orphan); v2 `inputs.stable == true && 'stable' || 'dev'`
-(`feef989`) number-casts the stringified `"true"` away from boolean true (the stable job
-ran dev at the promotion). Any fix must stop evaluating the input in GitHub expressions
-entirely; `persist-credentials: ${{ inputs.stable }}` (direct forwarding into a typed
-action input) is correct and unaffected. One shape was drafted and REVERTED unlanded
-(operator abort): `STABLE: ${{ inputs.stable }}` riding step env — the env crossing
-stringifies deterministically — with an `if [ "$STABLE" = "true" ]` bash branch selecting
-the channel beside the existing run line. The next session re-derives or replaces it; the
-toolkit AGENTS.md flags the current expression as broken so no session trusts it.
+Resolved — the channel-input redesign (`bdb1e2a`): the boolean was the defect, not the
+expressions. `stable: true|false` forced a bool→channel mapping somewhere inside the
+composite, and both mapping sites in `${{ }}` are coercion traps (truthiness of stringified
+`"false"`; number-cast of stringified `"true"`). The fix deletes the mapping: the composite's
+input is now the required string `channel` (no default), consumed in exactly two places —
+`persist-credentials: ${{ inputs.channel == 'stable' }}` (string equality, the NuGet login
+gate's comparison class, live-green through every bashrun landing) and `RELEASE_CHANNEL:
+${{ inputs.channel }}` (pure value forwarding, the class that was live-correct through both
+incidents). Ruling amended to accurate form: booleans never cross into expression evaluation
+inside a composite; strings may, forwarded as values or compared as strings. Failure matrix:
+an omitted input fails at composite input validation before any step; a wrong value dies at
+typer's Choice parse (the `ReleaseChannel` enum, verbs/release.py) before any side effect;
+`persist-credentials` computes false for anything but the exact `stable` spelling — a garbage
+run never holds push creds; `channel: pr` in a delivery job dies at the GITHUB_REF
+PR-number parse. Alternatives considered and rejected by operator ruling as ugly: the
+two-composites split (the seam-law fundamentalist shape — `release-dev`/`release-stable`,
+channel hard-coded per file, caller spelling the choice as the reference) and the prior
+session's env+bash-branch draft (aborted then, rejected on re-derivation). Local
+verification: lint-workflows green over the modified composite, 157 tests pass.
 
-Recovery sequence once the composite is fixed: land the fix on toolkit dev; bashrun repins
-its `uses:` refs through the gate (branch off the current dev tip — local clones lag
-origin after runner-side merges; the operator pulls, the agent never fetches and never
-uses prepo); the landing's dev channel publishes the next `0.7.0.dev{count}`; then the
+Recovery sequence (fix landed as `bdb1e2a`, operator push pending): bashrun repins its
+`uses:` refs through the gate, flipping both delivery jobs' `with:` from `stable: …` to
+`channel: dev`/`channel: stable` atomically with the SHA bump (branch off the current dev
+tip — local clones lag origin after runner-side merges; the operator pulls, the agent never
+fetches and never uses prepo); the landing's dev channel publishes the next `0.7.0.dev{count}`; then the
 operator re-promotes `dev:main` (fast-forward) and the stable channel runs its first
 correct pass — publishes `0.7.0`, tags `bashrun-v0.7.0`, cuts CalVer `2026.10.4`, resets
 `dev-builds`. Re-running 38107631822 is useless: a rerun re-executes the composite at the
