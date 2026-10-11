@@ -462,6 +462,43 @@ placeframe's lock requires uv 0.12.15, and the sandbox default `uv` (0.11.14 at
 `PATH="$HOME/.local/bin:$PATH"` (shell exports do not persist between tool calls; child
 `uv run` invocations inherit the inline prefix).
 
+Session record (2026-10-11, placeframe script-tier consolidation, operator-ruled): three
+commits ride `toolkit-cutover` past the review-rebased tip — `b433a7a2` (delete cesium +
+protect-branches), `646757d0` (dissolve build-scripts, inline the preflight, relock),
+`40b8aa43` (docs). Rulings executed: the cesium scripts are DELETED, superseding the
+placeframe node's "remain in the tree without an invoking workflow"; `protect_branches.py`
+and `.github/branch-protection.json` die with them (obsoleted by infra-github-org —
+placeframe's census line already carries the full evergreen ruleset triple, the legacy
+found-state params `main_ruleset`/`dev_protection`/`merge_only` appear nowhere in dev.py,
+and the JSON's required checks were pre-cutover check names under the dead
+ruleset-level-check doctrine besides; repo.py's dead params + TODOs are infra-side residue).
+The `build-scripts` workspace member is DISSOLVED into `scripts/`: the repo preflight is
+inlined into `scripts/preflight.py` (python battery via bash, then image
+refs/couplings/DB/datamodels in-process, then generate-clients --check; the `preflight`
+entry point and its typer wrapper die — operators run the exact sidecar CI runs),
+`publish_compose`/`generate_datamodels`/`sqlacodegen_generator` moved flat into
+`scripts/src/scripts/` (entry-point names unchanged, so no workflow YAML changed;
+publish_compose's one typer.Option default converted to Annotated, killing the B008 layer
+build/ruff.toml carried — the file dies with the dir), root pyproject surgery (member, dev
+group, uv.sources, basedpyright include, pytest testpaths), deptry DEP002 ignores carried,
+`unity-devkit`/`build-artifact-registry` deps dropped as cesium-only (bar stays resolvable
+as docker-devkit's transitive). The split's documented rationale was void all along — one
+shared workspace venv, and preflight-python syncs `--all-packages`, so the calibration stack
+was in every CI venv regardless. Layout stays FLAT by operator acceptance (no subdirs;
+preflight.py pinned at scripts/ root by the toolkit contract). Verified green at the final
+shape: ruff/format/basedpyright/pytest, lint-workflows + validate-release-plan against the
+toolkit clone, and the sidecar END TO END — preflight-python battery, DB bring-up +
+migrations, datamodels staleness, and the FULL generate-clients --check (all specs and
+clients, one better than the prior session's api-scope run). The relock diff is pure member
+surgery (build-scripts package block removed, dep declarations absorbed under scripts; zero
+version churn; per-service pylocks unchanged, lock-python re-run confirmed). Sandbox fact:
+after editing a workspace member's entry points, `uv sync` does NOT regenerate stale
+console-script wrappers when the member's version is unchanged — `uv sync
+--reinstall-package scripts` materialized them; fresh CI installs cannot hit this (wrappers
+are written at first install). The two Dockerfile comments naming
+`build_scripts.placeframe.context_sha` were corrected to `docker_devkit.context_sha` (stale
+before this session — that module lives in docker-devkit).
+
 Open carries, decisions pending: build-artifact-registry's wrapper-era 3.15 carry is RESOLVED
 — the cutover deleted the wrapper (its reusables pin `66df38b`, past the 3.13 pin), confirmed
 at the tier close. Still open: its origin remote still spells the ci-devkit SSH URL (redirects cover
