@@ -51,6 +51,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: $/.github/actions/setup-uv
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: >-
           uv run --locked build-unity
           --project "$PROJECT"
