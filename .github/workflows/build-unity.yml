@@ -2,6 +2,12 @@ name: Build unity
 
 on:
   workflow_call:
+    inputs:
+      runs-on:
+        description: Runner labels for the fanout legs, as a JSON array string
+        required: false
+        default: '["ubuntu-latest"]'
+        type: string
     secrets:
       unity-email:
         description: Unity license email
@@ -37,9 +43,7 @@ jobs:
 
   build-unity:
     needs: [plan-unity-builds]
-    runs-on:
-      - self-hosted
-      - unity
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     container: ${{ matrix.editor-image }}
     strategy:
       fail-fast: false
