@@ -79,6 +79,27 @@ post-migration shape, so a plain repin of its `uses:` refs to a fresh toolkit SH
 is atomic-safe and clears both the 422 and the 3.15 stall — the cheap candidate before the
 sweep, same class as build-artifact-registry's carry below. The Phase 6 pilots and the Phase 7
 sweep follow.
+Phase 6 (bashrun pilot) in flight: PR #8 (`0.6.x`) open on dev, integrate green — the
+preflight and update-pr-draft-release reusables' first live consumer passes; the sidecar
+relocked onto python-devkit `0.3.0.dev38096025533` (ci-devkit dissolved out of the lock,
+Phase 5's claim confirmed live); `scripts/preflight.py` is the two-line sidecar dogfood the
+harness invokes. Spec fix riding the pilot: `update-pr-draft-release` job permissions are
+`contents: write, packages: read` — the pr channel's draft writes need the write half the
+canonical example omitted. The labeled gate call deadlocked (run canceled before any job:
+"deadlock detected for concurrency group 'merge-gate-{N}' between a top level workflow and
+'merge-gate'") — the reusable carried its own top-level concurrency group identical to the
+caller's. No prior landing had exercised the gate as a reusable: unity-devkit PR #8 and
+docker-devkit PR #10 both landed through wrapper-shaped local callers, so the pilot was the
+first live `workflow_call`. Fix: merge-gate.yml purified to workflow_call-only (own trigger,
+top-level concurrency, and the job-level label `if:` dropped — the verb owns all policy);
+lint law added — a found file declaring `workflow_call` is a reusable and must declare it as
+its only trigger with no top-level concurrency, filename-keyed consumer contracts applying
+only to non-reusables; consumer files unchanged; bashrun repins to the fix SHA. bashrun's
+main still fires its old workflow_run-woken gate red on integrate completions (the
+unity-devkit transitional-noise class) until dev → main promotion carries the new file. The
+PyPI-through-composite verification gate is effectively pre-answered: docker-devkit's
+`0.3.0.dev113` rode the composite release.yml onto PyPI at Phase 4's landing; bashrun's
+landing re-exercises it on the preflight+gate path.
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
