@@ -207,6 +207,62 @@ def test_merge_gate_wake_shape_is_enforced(tmp_path: Path) -> None:
     assert "must omit cancel-in-progress" in rendered(validate_workflow_file(cancel, {}))
 
 
+def test_reusable_workflow_law_is_enforced(tmp_path: Path) -> None:
+    pure = write(
+        tmp_path / MERGE_GATE_WORKFLOW,
+        """
+on:
+  workflow_call:
+    secrets:
+      merge-bot-private-key:
+        required: true
+
+jobs:
+  merge-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+""",
+    )
+    assert messages_of(validate_workflow_file(pure, {})) == []
+
+    serializing = write(
+        tmp_path / "preflight.yml",
+        """
+on:
+  workflow_call:
+
+concurrency:
+  group: preflight-${{ github.ref }}
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+""",
+    )
+    assert "must not declare top-level concurrency" in rendered(validate_workflow_file(serializing, {}))
+
+    hybrid = write(
+        tmp_path / "gate.yml",
+        """
+on:
+  pull_request:
+    branches: [dev]
+    types: [labeled]
+  workflow_call:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+""",
+    )
+    assert "workflow_call as its only trigger" in rendered(validate_workflow_file(hybrid, {}))
+
+
 def test_action_files_are_scanned_for_toolkit_pins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     write(

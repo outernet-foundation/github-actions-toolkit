@@ -120,10 +120,30 @@ def validate_workflow_file(path: Path, toolkit_pins: dict[Path, str]) -> list[Pr
     if workflow is None:
         return problems
     problems.extend(collect_pin_problems(path, workflow.uses_values, toolkit_pins))
+    if workflow.triggers is not None and "workflow_call" in workflow.triggers:
+        return problems + validate_reusable_workflow(workflow, path)
     if path.name == RELEASE_WORKFLOW.name:
         problems.extend(validate_release_concurrency(workflow, path))
     if path.name == MERGE_GATE_WORKFLOW.name:
         problems.extend(validate_merge_gate_wake(workflow, path))
+    return problems
+
+
+# A reusable is a callee: the caller owns wake triggers and serialization, so a
+# reusable carrying either puts one file in two roles — and a concurrency group
+# matching the caller's cancels the call as a deadlock before any job starts.
+def validate_reusable_workflow(workflow: WorkflowView, path: Path) -> list[Problem]:
+    problems: list[Problem] = []
+    if workflow.triggers is None or set(workflow.triggers) != {"workflow_call"}:
+        problems.append(file_problem(path, "a reusable workflow must declare workflow_call as its only trigger"))
+    if workflow.concurrency is not None:
+        problems.append(
+            file_problem(
+                path,
+                "a reusable workflow must not declare top-level concurrency — the caller serializes,"
+                " and a group matching the caller's self-deadlocks the call",
+            )
+        )
     return problems
 
 

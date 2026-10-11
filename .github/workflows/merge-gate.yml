@@ -1,24 +1,17 @@
 name: Merge gate
 
 on:
-  pull_request:
-    branches: [dev]
-    types: [labeled]
   workflow_call:
     secrets:
       merge-bot-private-key:
         description: Merge-bot GitHub App private key
         required: true
 
-concurrency:
-  group: merge-gate-${{ github.event.pull_request.number }}
-
 permissions:
   contents: read
 
 jobs:
   merge-gate:
-    if: github.event.label.name == 'ready-to-merge'
     runs-on: ubuntu-latest
     steps:
       - uses: $/.github/actions/toolkit-checkout
