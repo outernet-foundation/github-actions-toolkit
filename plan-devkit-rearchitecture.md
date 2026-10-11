@@ -444,6 +444,24 @@ pin-bump/doc-rename/repin commits dropped with the cutover commit pinning the re
 toolkit tip directly. Operator: push toolkit dev (one commit) before placeframe's PR runs
 CI, then placeframe's PR carries the nine-commit series.
 
+Session close (2026-10-11): operator adjustments to placeframe's branch are IN FLIGHT — the
+tips here are as-of-close; re-derive state from the repos before acting. As of close: toolkit
+dev = two prose commits ahead of origin/dev; placeframe's `uses:` pins and cutover commit
+message spell `5e7212f`, which stays valid once dev is pushed (an ancestor of the tip,
+prose-only delta — repin only if wanted). placeframe `toolkit-cutover` carries the nine-commit
+series on origin/dev, worktree clean; the operator owns further reshaping, then the sequence
+is: push toolkit dev first, push the branch, open the PR, let CI certify, verify the
+per-repo `NUGET_USER` secret and MERGE_BOT/evergreen-dev wiring before labeling. Backups:
+`backup-pre-review-rebase` in both repos, `backup-pre-cesium-drop` in placeframe (`84beb852`);
+placeframe's `even-more-ci-fixes` (`fb188cd5`) is redundant residue. Verification state: ruff,
+format, lint-workflows, and validate-release-plan green at the cesium-drop shape; the
+pathspec-drop replay was verified by tree-diff (exactly one line) plus ruff on the touched
+file — re-run the full pair at the operator's final shape before labeling. Sandbox note:
+placeframe's lock requires uv 0.12.15, and the sandbox default `uv` (0.11.14 at
+/usr/local/bin) shadows the host-shared 0.12.15 at `~/.local/bin` — prefix commands with
+`PATH="$HOME/.local/bin:$PATH"` (shell exports do not persist between tool calls; child
+`uv run` invocations inherit the inline prefix).
+
 Open carries, decisions pending: build-artifact-registry's wrapper-era 3.15 carry is RESOLVED
 — the cutover deleted the wrapper (its reusables pin `66df38b`, past the 3.13 pin), confirmed
 at the tier close. Still open: its origin remote still spells the ci-devkit SSH URL (redirects cover
