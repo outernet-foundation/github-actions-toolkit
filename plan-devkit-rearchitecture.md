@@ -12,12 +12,12 @@ and code in separate commits, no trailers).
 ## Execution state
 
 Phase 1 has landed: build-artifact-registry is renamed, merged to dev, and published
-(`0.1.0.dev38075330641` on PyPI). Phase 0 (the self-pin repair, pinning `792302a290808c588eda84f73b29071e8fc53546`)
-is committed but deliberately unlanded — the operator punted landing, and Phase 2 work is stacked on
-the same branch (landing deferred until it must happen; the eventual PR carries Phase 0 + Phase 2
-together, certified once).
+(`0.1.0.dev38075330641` on PyPI). Phase 0 + Phase 2 are landed on dev (head `d982657`, the
+certified head, via the operator's direct push — see the landing ruling in the fourth-session
+paragraph below), together with the matrix/version refactor, the run-fact partition, the
+composite recut, the `$/` flip, the relock, and the checkout-wall fix.
 
-Phase 2 is code-complete on the branch (unpushed): all seven reusables, the release composite,
+Phase 2 rode that PR in full: all seven reusables, the release composite,
 own `integrate.yml` cut to a `$/` self-call and `merge-gate.yml` the pull_request+workflow_call
 hybrid (a workflow cannot `uses:` itself), `scripts/preflight.py` (the harness runs
 `uv run scripts/preflight.py`) carrying the self-test inline, the lint gut to the disposition table's four checks, `ci_step` killed,
@@ -202,11 +202,10 @@ own certification remains red only on preflight-python's deptry step (the known
 python-devkit bug — either land Phase 5's fixed line and relock first, or accept the
 window). Next: Phase 3 (unity-devkit), per the section below.
 
-Landing prerequisites (operator-owned, recorded here so no session re-derives them): the branch is
-pushed (origin/rearchitect, plus the two stacked commits below); this repo's own merge-gate hybrid
-reads the App key from a secret spelled `merge-bot-private-key` (kebab — no forwarding hop, unlike
-consumers' `MERGE_BOT_APP_PRIVATE_KEY`) plus the `MERGE_BOT_APP_ID` var, so both must exist in this
-repo under those names before the first `ready-to-merge` label.
+Landing (operator-owned, superseded by the direct-push ruling): the branch was pushed, PR #3
+opened, certified green, and landed — the operator pushed dev directly, so the
+`merge-bot-private-key` secret (kebab) + `MERGE_BOT_APP_ID` var matter only if this repo's
+merge-gate is ever repaired.
 
 Third session (2026-10-10): Phase 5 executed early — the operator chose the green landing
 over accepting the red window, so python-devkit landed before this repo. Its repo state: the
@@ -259,7 +258,15 @@ against the exact hidden merge-ref SHA of the failed run; AGENTS.md's installati
 operator-ownership law (pushes/pulls/PRs are operator's, remote stays SSH) updated with it. The
 two carried `$/` risks (self-reference resolution from a called reusable, the unity fleet's
 runner version) remain unobserved — the failed run died before reaching them; the re-run
-surfaces both or passes silently past them.
+surfaces both or passes silently past them. The re-run certified green (the trio's first full
+live pass), retiring the hosted-runner half of the carried `$/` risks — `$/` self-reference
+resolution from a called reusable works on a current hosted runner; the unity self-hosted
+pool's runner version stays unobserved until the first unity leg (Phase 3 / the capture-tool
+pilot). The operator then landed by pushing dev directly to the certified head `d982657`:
+operator ruling — the merge-gate is not worth it for this repo's own landing, may be repaired
+later; until then this repo lands by operator push (the evergreen invariant held — dev received
+exactly the certified SHA; the gate mechanism was skipped, not the certification), and PR #3
+closed itself MERGED. Next: Phase 3 (unity-devkit), unchanged.
 
 ### Matrix/version refactor (before Phase 3)
 
