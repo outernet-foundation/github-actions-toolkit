@@ -15,6 +15,7 @@ from typing import Annotated, NamedTuple, Self
 import typer
 from bashrun.bash import bash, bash_check, bash_output
 from build_artifact_registry.builds import list_build_tags, pull_artifact
+from build_artifact_registry.setup_oras import install_oras
 from pydantic import BaseModel, model_validator
 
 from release_devkit.config import DEFAULT_CONFIG_PATH, PublishConfig, Settings, load_config
@@ -262,6 +263,7 @@ def stage_apps(
     tag: str,
     repository: str,
 ) -> list[tuple[str, Path]]:
+    install_oras()
     staging = Path(mkdtemp(prefix="release-builds-"))
     staged: list[tuple[str, Path]] = []
     for app_name, artifact in [
@@ -307,6 +309,7 @@ def stage_apps(
 # pull each, and combine. The bare sha-{sha} tag (single-leg pushes from before the
 # shard grammar) still resolves as a one-shard fallback.
 def pull_digest_manifest(settings: Settings, shelf: str, sha: str) -> dict[str, DigestEntry]:
+    install_oras()
     shard_prefix = f"sha-{sha}-"
     shard_tags = sorted(
         tag
