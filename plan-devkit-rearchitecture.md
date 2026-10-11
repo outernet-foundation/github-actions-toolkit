@@ -114,7 +114,19 @@ green — the 02:40 run refused "pending" 51s after integrate went green, its ow
 check the only pending entry. Fix (toolkit `decae45`): `merge_battery` excludes both the bare
 and the two-part spelling of the gate's own check name. Gate check spellings are standing
 contract data for anything name-matching checks; the repo-side residue is none — consumers
-hold no name-coupled contracts.
+hold no name-coupled contracts. The gate then landed PR #8 cleanly (`128fca4`, dev) — the
+purified reusable's first green landing, self-exclusion fix certified live. Correction of the
+earlier record: docker-devkit's `0.3.0.dev113` and unity-devkit's `0.3.0.dev223` rode
+OLD-shape release.yml files — the release composite's dev channel had never run live before
+bashrun's landing, and its first exercise tripped the boolean ternary: `inputs.stable`
+stringified as `"false"` is truthy, so `inputs.stable && 'stable' || 'dev'` resolved stable
+inside the dev job — it published bare `bashrun 0.6.0` to PyPI (content-identical to the
+landed tree, untagged), then died pushing `bashrun-v0.6.0` (the dev composite never persists
+credentials, by design). Fix (`feef989`): `inputs.stable == true && 'stable' || 'dev'`.
+Operator ruling on the stray: no yank — bashrun bumps `major_minor` to 0.7, the untagged
+0.6.0 stays on PyPI as an orphan (version math is tag-driven and never references it), the
+next dev publish is `0.7.0.dev{count}`, the eventual promotion publishes stable `0.7.0` and
+tags `bashrun-v0.7.0`.
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
