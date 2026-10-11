@@ -19,9 +19,9 @@ on dev — certified head `d982657`, landed by the operator's direct push (see t
 ruling in the status paragraph and AGENTS.md "Landing changes") — riding the matrix/version
 refactor, the run-fact partition, the `$/` install-trio flip, and the relock onto
 python-devkit `>=0.3.0.dev0`. The repo's current AGENTS.md describes the landed binding
-surface in full; the plan does not repeat it. dev carries eight unpushed commits past
-`d982657` (the unity legs' git safe-directory pre-step + its AGENTS.md row, the direct-push
-landing ruling, and plan records) — pushes are operator-owned. Standing rulings from the landed phases: version
+surface in full; the plan does not repeat it. dev is pushed through `3268439` (past `d982657`:
+the unity legs' git safe-directory pre-step + its AGENTS.md row, the direct-push landing
+ruling, the cleanup-tag fix, and plan records) — pushes are operator-owned. Standing rulings from the landed phases: version
 floors spell `>=X.Y.Z.dev0` (PEP 440 — a `.dev` prerelease cannot resolve under a short
 base, and a run-id-keyed floor would die on the first count-keyed republish); the old
 ci-devkit distribution is frozen forever, no yank; preflight's sequential
@@ -37,7 +37,7 @@ stale pin off a warm index cache; the sweep's relocks carry `--refresh`), integr
 green including the unity compile leg on the self-hosted pool (the cache fix's first live
 certification), the labeled merge-gate landed PR #8 as `85e66c1`, and `unity-devkit 0.3.0.dev223`
 rode its release.yml onto PyPI. The landing surfaced one bug, fixed on this repo's dev
-(`4e12952`, unpushed): the merge-gate run goes red after every real step — `gh release delete
+(`4e12952`, pushed — dev is through `3268439`): the merge-gate run goes red after every real step — `gh release delete
 --cleanup-tag` 422s on the pr draft because a draft never materializes its tag until publish
 and these drafts are never published; `--cleanup-tag` is dropped from `delete_draft_release`
 (both call sites — `pr-{N}` and the stable channel's `dev-builds` reset — delete never-published
@@ -48,14 +48,15 @@ per repo (a wrapper bump past d982657 alone forces the labeled-only wake and the
 findings onto un-migrated files — Phase 7's cutover spells the atomicity). Transitional noise,
 self-healing: unity-devkit's main still carries the old workflow_run-woken merge-gate.yml,
 failing loudly on the now-required `--head-sha` until main receives the new file (dev → main
-promotion or the sweep).
+promotion or the sweep). Phase 4 (docker-devkit) is next per the plan's order; the Phase 6
+pilots and the Phase 7 sweep follow.
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
 discovers the interpreter from the clone (the repo's own pin cannot reach it; `tools/devkit`
 lacks a `.python-version` as a secondary door; its repo CI keeps the hand-written shape
-until the Phase 7 sweep). Candidates: wrapper bump to `d982657` (requires the merge-gate
-wake fix and `release-devkit.yaml` migration to `registry:`+`identity:` — the new loader
+until the Phase 7 sweep). Candidates: wrapper bump to the pushed head `3268439` (requires the
+merge-gate wake fix and `release-devkit.yaml` migration to `registry:`+`identity:` — the new loader
 hard-flips the old `registries:` spelling) vs job-level `python-version` pins on the
 setup-uv steps. Also: its origin remote still spells the ci-devkit SSH URL (redirects cover
 it; rename housekeeping is host-side). Correction of an earlier record: `gh` is NOT blind to
