@@ -264,14 +264,30 @@ promotion must repin its toolkit `uses:` past the fix SHA for playerbuild's `0.3
 stable channel — its current pin `66df38b` computes the old gate; npm stays at `0.1.5` until
 then.
 
-Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
-wrapper-driven jobs — its wrapper pins `029a9a6`, a
-pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
-discovers the interpreter from the clone (the repo's own pin cannot reach it; `tools/devkit`
-lacks a `.python-version` as a secondary door; its repo CI keeps the hand-written shape
-until the Phase 7 sweep). Resolution rides the sweep's first node — the cutover's reusables
-pin `66df38b` (past the 3.13 pin), so the wrapper-driven jobs die with the wrapper itself.
-Also: its origin remote still spells the ci-devkit SSH URL (redirects cover
+Session close (2026-10-11): the devkit tier is CLOSED — every devkit landed, promoted, and
+stable-published. docker-devkit verified end to end (main = dev, `docker-devkit 0.3.0` on
+PyPI). unity-devkit end to end: the repin PR #10 (`toolkit-repin`, toolkit `63b580f`) landed
+through its gate, the dev landing published `unity-devkit 0.3.0.dev229` and
+`org.outernet.playerbuild 0.3.0-dev.229` — the forced-publish clause's first live exercise
+(dev channel, unchanged path, new line) — the operator promoted, and the stable channel
+published `unity-devkit 0.3.0` (PyPI) and `org.outernet.playerbuild 0.3.0` (npm `latest`),
+pushing both `*-v0.3.0` tags — the clause's second live exercise, stable direction.
+python-devkit's cutover confirmed landed (its remote dev's integrate references the toolkit
+reusables; main = dev). The npm-silence bug was observed live in the stable run's log — the
+publish invisible between `Installing Node.js 24` and post-cleanup — fixed after diagnosis
+(`833a74d`, prints the captured npm stdout; consumers inherit it by repinning past it, which
+the sweep's fresh-SHA law carries atomically). Residue: unity-devkit carries a closed-unmerged
+PR #11 (`0.4.x`) — operator experiment, nothing landed, branch may linger. Resumption: the
+operator pushes toolkit dev (`9bca9a2` sweep reorder + `833a74d` npm output were unpushed at
+close), then the simple-publisher tier opens — logger-conf first (consumers: placeframe-common
+`logger-conf[otlp]`, capture-tool transitively, pulsar scripts), then openapi-client-codegen,
+pydantic-settings-pulumi, lbe-toolkit (operator prerequisites verified before its label);
+then Make-it-Sing, placeframe, placeframe-capture-tool, then Nessle, ObserveThing,
+StatefulUnity last.
+
+Open carries, decisions pending: build-artifact-registry's wrapper-era 3.15 carry is RESOLVED
+— the cutover deleted the wrapper (its reusables pin `66df38b`, past the 3.13 pin), confirmed
+at the tier close. Still open: its origin remote still spells the ci-devkit SSH URL (redirects cover
 it; rename housekeeping is host-side). Correction of an earlier record: `gh` is NOT blind to
 Actions runs — the App token minted via `uv run --project /pulsar/scripts
 mint-github-app-token` reads run lists, views, and logs on the public repos; the prior
@@ -298,12 +314,11 @@ and the bootstrap's `curl -fsSL` calls carry no timeouts — a stalled connectio
 forever, silently. Fix candidates: checksums as repo constants (zizmor pattern) +
 `--connect-timeout`/`--max-time` on the two downloads.
 
-Carried risks, unobserved: the unity self-hosted fleet's runner version needs ≥ 2.336.0 for
-`$/` (the unity legs execute the install trio on that pool once the consumer-half flip
-lands) — the first unity-legged cutover on that pool surfaces it (unity-devkit's own
-self-cutover; Phase 3's unity legs were still raw-checkout). The hosted half is retired:
-PR #3's green re-run certified the install trio's first full live pass (`$/`
-self-reference resolution from a called reusable works on a current hosted runner).
+Carried risks: none open. The unity self-hosted fleet's runner version passed its ≥ 2.336.0
+gate live — PR #9's compile legs (the fleet's first `$/` exercise on that pool) ran green.
+The hosted half retired earlier: PR #3's green re-run certified the install trio's first full
+live pass (`$/` self-reference resolution from a called reusable works on a current hosted
+runner).
 
 Ruled out (do not re-propose without new information): an added composite-lint layer
 (bettermarks/composite-action-lint surveyed).
