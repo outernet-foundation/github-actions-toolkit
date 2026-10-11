@@ -76,7 +76,7 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
     settings = Settings.model_validate({})
     publish_config = load_config(config)
 
-    # Make git trust the workspace before any git call — checkout set safe.directory in a temporary HOME
+    # Make git trust the workspace before any git call
     configure_git(settings.github_workspace)
 
     # Publish every changed package to its registry and tag the stable versions
@@ -90,8 +90,7 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
     head = bash_output("git rev-parse HEAD").strip()
     sha = head if channel == ReleaseChannel.PR else bash_output(f"git log -1 --format=%P {head}").strip().split()[1]
     short_sha = sha[:12]
-    # Keyed at the certified head, not HEAD: the merge commit bumps the count past
-    # what the app binaries stamped at this head.
+    # Count commits at the certified head the app binaries stamped
     commit_count = int(bash_output(f"git rev-list --count {sha}").strip()) if channel != ReleaseChannel.STABLE else 0
 
     # Lay out the release notes scaffolding
@@ -288,7 +287,7 @@ def stage_apps(
             registry_token=settings.github_token,
         )
 
-        # The layer holds exactly one file: the build's single player binary
+        # Unwrap the layer's single file, the build's player binary
         (source,) = layer.iterdir()
 
         # Copy the asset under its release name and record it
@@ -310,13 +309,9 @@ def stage_apps(
     return staged
 
 
-# Each docker matrix leg shelves its own manifest shard under sha-{sha}-{key}; the
-# legs run in parallel so a shared tag would be last-writer-wins. Consumption runs
-# after every leg finished, so the merge happens here: enumerate the SHA's shards,
-# pull each, and combine. The bare sha-{sha} tag (single-leg pushes from before the
-# shard grammar) still resolves as a one-shard fallback.
 def pull_digest_manifest(settings: Settings, shelf: str, sha: str) -> dict[str, DigestEntry]:
     install_oras()
+    # Enumerate the SHA's shards, one tag per parallel matrix leg
     shard_prefix = f"sha-{sha}-"
     shard_tags = sorted(
         tag
@@ -329,6 +324,7 @@ def pull_digest_manifest(settings: Settings, shelf: str, sha: str) -> dict[str, 
         )
         if tag.startswith(shard_prefix)
     )
+    # Fall back to the bare pre-shard tag when no shards exist
     if not shard_tags:
         shard_tags = [f"sha-{sha}"]
     merged: dict[str, DigestEntry] = {}
@@ -391,15 +387,12 @@ def markdown_table(headers: list[str], rows: list[list[str]]) -> str:
 def delete_draft_release(tag: str, repository: str) -> None:
     if not bash_check(f"gh release view {tag} --repo {repository}"):
         return
-    # no --cleanup-tag: a draft never materializes its tag until publish, and
-    # these drafts are never published, so the tag ref does not exist
+    # Omit --cleanup-tag, since unpublished drafts never materialize a tag
     bash(f"gh release delete {tag} --yes --repo {repository}")
 
 
-# actions/checkout sets safe.directory in a temporary HOME that's cleaned up
-# after the step finishes (actions/checkout#766). Container jobs that run
-# git later need it re-set in the real HOME.
 def configure_git(workspace: str) -> None:
+    # Re-set safe.directory in the real HOME, where checkout only wrote a temporary one
     bash(f"git config --global --add safe.directory {shlex.quote(workspace)}")
 
 
