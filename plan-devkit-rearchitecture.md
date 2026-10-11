@@ -385,7 +385,10 @@ only key). Delete redundant hatch wheel `include` blocks naming files under `pac
 placeframe datamodels uses `force-include` — inspect and drop the same way).
 
 **Standing constraints.** The GitHub App token cannot push or merge — lands go through each
-repo's merge-gate or the operator. **Never label a PR in a repo without a live verification
+repo's merge-gate or the operator. The agent never runs `git fetch` and never uses prepo in
+these repos: branch plainly in the main checkout (`git checkout -b <name>`), treating the
+local checkout as the session's state — origin-side truth arrives through the operator.
+**Never label a PR in a repo without a live verification
 job** (vacuously-true all-green) — lbe-toolkit and Make-it-Sing must not see `ready-to-merge`
 before integrate runs.
 
