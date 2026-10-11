@@ -680,8 +680,20 @@ validate-release-plan; the rename ripple was fixup-autosquashed so every interme
 ruff-clean (targets verified branch-local first). Sandbox venv note: the rename hit the known
 stale-wrapper pitfall — `uv sync` does not regen console scripts when the version is unchanged,
 `uv sync --locked --reinstall-package github-actions-toolkit` materialized them; fresh installs
-immune. Operator sequence: push toolkit dev (its tip is the 8.3 resweep pin), then Phase 8.2
-(docker-devkit `0.4`).
+immune.
+
+Session close (2026-10-11, 8.1 pushed): the operator pushed toolkit dev at `48250c4` — that
+tip IS the 8.3 resweep pin (nine commits over the prior tip `98acf90`: the two pre-session plan
+records, five code, AGENTS.md, the execution record). Next session opens at Phase 8.2
+(docker-devkit `0.3` → `0.4`): collapse the manifest candidates to `workloads/images.yml` +
+`workloads/images.lock` (fixtures retarget to the real path), mirror-prefix injection from
+`docker-devkit.yaml`'s `mirror.prefix` with the double-prefix guard and the empty-`mirror`-section
+error, `up`'s `--pull-unmirrored` branch deleted, the `is_mirrored`/startswith matching and the
+silent "Mirrored images: 0" success mode die, AGENTS bridge sentences drop; standing laws apply
+(one repo one PR through its gate, promote to `main`, stable publish `0.4.0`, prose and code in
+separate commits, `--refresh` on relocks). Pull the docker-devkit clone before touching it
+(its local dev lags the phase-4/promotion tips); its consumers' `x-base-images` flips ride 8.3,
+not 8.2. The plan-record commit for this close rides local until the operator's next push.
 
 Ruled out (do not re-propose without new information): an added composite-lint layer
 (bettermarks/composite-action-lint surveyed).
