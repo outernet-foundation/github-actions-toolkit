@@ -228,12 +228,22 @@ uniformity over the smoke test. Both nodes cut over on the plain reusable set at
 hatch include hygiene, relock onto bashrun 0.8/bar 0.2.0/python-devkit 0.3.0 all stable;
 docker-devkit: same shape, plus one real lint fix — ruff 0.17's unconventional-import-alias
 wanted `datetime as dt` in image_refs.py). Both verified locally: battery, lint-workflows,
-validate-release-plan. unity-devkit branched off the phase-3 tip `d7c2324`, docker-devkit off
-the phase-4 tip `820915a` — local devs lag; handed to the operator for push, green, merge,
-promotion (unity-devkit's stable channel will publish both `unity-devkit 0.3.0` and
-`org.outernet.playerbuild 0.3.0` — the npm-through-composite stable publish is then
-live-certified). The devkit self-cutover tier is complete pending these landings; next tier:
-simple publishers (logger-conf, openapi-client-codegen, pydantic-settings-pulumi, lbe-toolkit).
+validate-release-plan. unity-devkit branched off the phase-3 tip `d7c2324` (`toolkit-cutover` @
+`fafd95f`), docker-devkit off the phase-4 tip `820915a` (@ `f56e81c`); local devs lag. Session
+closed at the handoff: merges, promotions, and the toolkit push are operator-owned and in flight
+(toolkit dev carries three unpushed plan-record commits: `e452d43`, `7cb2702`, `0db597e`). bar
+`0.2.0` and python-devkit `0.3.0` stables are already registry-confirmed (both resolved from
+PyPI in this session's relocks). Next session opens by closing the devkit tier: confirm
+docker-devkit `0.3.0` and unity-devkit `0.3.0` + `org.outernet.playerbuild 0.3.0` live on their
+registries, mains promoted, and unity-devkit's integrate green — its compile legs are the
+fleet's first `$/` exercise on the self-hosted unity pool, so the runner ≥ 2.336.0 gate's
+verdict lands there (a red is a runner upgrade, not a repo fix); pull every touched clone first
+(unity-devkit's and docker-devkit's local `dev`/`main` lag their phase tips; bashrun's clone
+sits on `toolkit-channel-input`). Then proceed to the simple-publisher tier — logger-conf,
+openapi-client-codegen, pydantic-settings-pulumi, lbe-toolkit — every upstream now stable, so
+the tier relocks onto stables throughout; lbe-toolkit's operator prerequisites (npm
+trusted-publisher rows for the three `org.outernet.lbetoolkit*` names, evergreen-dev
+membership, merge-bot wiring) must be verified present before its PR is labeled.
 
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
