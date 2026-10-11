@@ -172,6 +172,17 @@ def test_gate_ignores_its_own_check_run(monkeypatch: pytest.MonkeyPatch) -> None
     assert any("push origin HEAD:refs/heads/dev" in command for command in bash_log.commands)
 
 
+def test_gate_ignores_its_own_check_run_in_reusable_caller_spelling(monkeypatch: pytest.MonkeyPatch) -> None:
+    rollup = [
+        {"name": "preflight / preflight", "status": "COMPLETED", "conclusion": "SUCCESS"},
+        {"name": "merge-gate / merge-gate", "status": "IN_PROGRESS", "conclusion": None},
+    ]
+    payload = pr_view_payload(["ready-to-merge"], rollup)
+    exit_request, bash_log = run_gate(monkeypatch, gate_responses(payload))
+    assert exit_request is None
+    assert any("push origin HEAD:refs/heads/dev" in command for command in bash_log.commands)
+
+
 def test_gate_refuses_when_no_open_pr_matches_the_head(monkeypatch: pytest.MonkeyPatch) -> None:
     responses = gate_responses(pr_view_payload(["ready-to-merge"], GREEN_ROLLUP))
     responses["gh pr list --head feature-x --base dev --json number,headRefOid"] = json.dumps([

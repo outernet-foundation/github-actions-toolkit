@@ -74,7 +74,7 @@ def main(
     if LABEL_NAME not in {label.name for label in pull_request.labels}:
         raise SystemExit(f"label {LABEL_NAME} absent — refusing to merge")
 
-    battery = [entry for entry in pull_request.check_rollup if entry.name != GATE_CHECK_NAME]
+    battery = merge_battery(pull_request)
     blocking = [entry for entry in battery if entry.status != "COMPLETED" or entry.conclusion not in GREEN_CONCLUSIONS]
     if blocking:
         if all(entry.status in WAITING_STATUSES for entry in blocking):
@@ -127,7 +127,7 @@ def report_dry_run(head_sha: str, pr_number: str, pull_request: PullRequest) -> 
     print(f"  PR #{pr_number} state {pull_request.state}")
     label_present = LABEL_NAME in {label.name for label in pull_request.labels}
     print(f"  label {LABEL_NAME} {'present' if label_present else 'absent — apply the label to attempt the merge'}")
-    battery = [entry for entry in pull_request.check_rollup if entry.name != GATE_CHECK_NAME]
+    battery = merge_battery(pull_request)
     blocking = [entry for entry in battery if entry.status != "COMPLETED" or entry.conclusion not in GREEN_CONCLUSIONS]
     if not blocking:
         print(f"  {len(battery)} checks green on {pull_request.head_oid[:12]}")
@@ -146,3 +146,14 @@ def report_dry_run(head_sha: str, pr_number: str, pull_request: PullRequest) -> 
     else:
         print(f"  checkout HEAD {checked_out[:12]} is not the PR head {pull_request.head_oid[:12]}")
     print(f"  would merge --no-ff into {BASE_BRANCH}, delete the head branch, delete the pr-{pr_number} draft")
+
+
+# The gate's own check reports as the bare job name from local-job gates and as
+# "caller / merge-gate" through a reusable caller; it stays out of the battery
+# because the run evaluating the battery is itself in progress.
+def merge_battery(pull_request: PullRequest) -> list[CheckEntry]:
+    return [
+        entry
+        for entry in pull_request.check_rollup
+        if entry.name != GATE_CHECK_NAME and not entry.name.endswith(f" / {GATE_CHECK_NAME}")
+    ]
