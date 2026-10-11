@@ -547,6 +547,31 @@ step; the placeframe sequence then resumes where it stands (verify the per-repo 
 secret and MERGE_BOT/evergreen-dev wiring before labeling; the ruff-0.17/python-devkit
 `9945222` blocker unchanged). Toolkit dev carries this plan-record commit unpushed.
 
+Session record (2026-10-11, draft-release rendering redesign — the deferred formatting
+discussion, resolved before any landing step): the pr-136 draft's defects were diagnosed
+against live data (the actual digest manifest pulled from the shelf for PR #136's head
+`f6ad40bf`, the packages API, and browser probes). Findings: the historical
+`github.com/orgs/{org}/packages/container/...` package-page URL 500s even authenticated —
+the browsable form is repo-scoped `github.com/{repo}/pkgs/container/{name}`; per-version
+pages exist and ARE constructible — `…/{version-id}?tag={tag}`, the numeric id from the
+packages API versions endpoint matched by digest (verified live for all 17 placeframe
+images, every constructed URL 200 anonymous); the "Image" column showed bake target keys,
+not image names (`create-database` links package `database-manager`); row order was shard-
+hash order (arbitrary to the reader); and the digest column was both the width bomb
+(71-char unbreakable token — release bodies CLIP overflowing tables, no scrollbar) and
+information nothing on the page consumes. Converged rendering, operator-ruled: tables
+everywhere (uniformity), but the digest is never a column; sections open
+`### Commit [{sha}](commit-url)` — stable included, which previously carried no commit
+line at all; Packages is `Package | Registry | Version` with the version linked to its
+registry page; Apps is `App | Platform | Version` with the version linked to the asset
+(the platform column is the run-up-to multi-platform apps; `stage_apps` now threads
+`artifact.platform`, already config-modeled); Built images is `Image | Tag` — display name
+= ref tail under `ghcr.io/{repository}/` (foreign namespace a loud error), alphabetical by
+ref, the `tree-` tag linked to that exact package version's page, digest-matched id with
+the bare package page as fallback (API blip → degraded link, never a dead run). Landed in
+`release.py` + tests (162 green, ruff/format/basedpyright); consumers inherit by repinning
+past the SHA per the fresh-SHA law — placeframe's pending repin carries it.
+
 Open carries, decisions pending: build-artifact-registry's wrapper-era 3.15 carry is RESOLVED
 — the cutover deleted the wrapper (its reusables pin `66df38b`, past the 3.13 pin), confirmed
 at the tier close. Still open: its origin remote still spells the ci-devkit SSH URL (redirects cover
