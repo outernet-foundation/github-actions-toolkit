@@ -281,9 +281,169 @@ PR #11 (`0.4.x`) — operator experiment, nothing landed, branch may linger. Res
 operator pushes toolkit dev (`9bca9a2` sweep reorder + `833a74d` npm output were unpushed at
 close), then the simple-publisher tier opens — logger-conf first (consumers: placeframe-common
 `logger-conf[otlp]`, capture-tool transitively, pulsar scripts), then openapi-client-codegen,
-pydantic-settings-pulumi, lbe-toolkit (operator prerequisites verified before its label);
-then Make-it-Sing, placeframe, placeframe-capture-tool, then Nessle, ObserveThing,
+pydantic-settings-pulumi — correction, same session's later ruling: lbe-toolkit moved out of
+the tier to sit beside Make-it-Sing, both after placeframe and placeframe-capture-tool (the
+sweep-order paragraph carries the amended sequence); then Nessle, ObserveThing,
 StatefulUnity last.
+
+Session record (2026-10-11, simple-publisher tier): sweep order amended by operator
+ruling (both order statements above corrected in place) — the tier ran as logger-conf,
+openapi-client-codegen, and pydantic-settings-pulumi in parallel; lbe-toolkit moved to sit
+beside Make-it-Sing, both after placeframe and placeframe-capture-tool. All three repos
+carry the cutover on local branch `toolkit-cutover` at toolkit `c1f000c` (remote dev
+verified at that SHA via the App token before any repin; the plan-record commits ride
+local until the operator pushes): workflows rewritten to the bashrun shape (preflight +
+update-pr-draft-release `uses:` calls, labeled-only merge-gate, two composite delivery
+jobs channel-spelled), the setup-release-devkit wrapper deleted, `scripts/preflight.py`
+sidecars added (`uv run --locked preflight-python` — python-devkit lives in each dev
+group, so no bashrun-style `tools/devkit` install sidecar), configs migrated
+`registries:`-map → `registry:`+`identity:` with `ci_workflow:` dropped, `major_minor`
+bumped to `0.3` everywhere (pydantic-settings-pulumi from `0.1`, skipping its poisoned
+0.2 line), redundant hatch wheel `include` blocks dropped (openapi-client-codegen's wheel
+verified to still ship `py.typed` plus all 10 `_data` files — a stale pre-committed 0.1.0
+wheel in its `dist/` initially masked the check), and relocks onto stables: bashrun
+`0.8.0`, python-devkit `0.3.0`, ruff `0.17.0`, typer `0.27.3`, pydantic `2.14.0`/pulumi
+`3.268.0` where consumed — ci-devkit dissolved out of every lock, live-confirmed again.
+All three batteries green on the first pass (ruff 0.17 flagged nothing here;
+docker-devkit's unconventional-import-alias hit did not recur), and lint-workflows +
+validate-release-plan green against the toolkit clone in every repo. logger-conf's branch
+folds its unpushed `.python-version` commit; the other two repos' pins were already
+committed on their checked-out branches. Handoff: pushes, PRs, labels, merges, and the
+dev → main promotions are operator-owned (the existing MERGE_BOT/evergreen-dev wiring
+carries over unchanged — the old wrapper merge-gate already used the same vars/secrets);
+each stable channel then publishes the 0.3.0 line, the forced-publish clause's cleanest
+case (the cutover commits touch the package path directly, so path-diff agrees). Same
+session amendment: pydantic-settings-pulumi's remote dev had moved past the stale local
+ref (two wrapper-era commits — `e97d197` major_minor to 0.2, `8151cab` wrapper repin; the
+operator's fetch had already updated `origin/dev`), and its branch is rebased onto
+`8151cab` (`3e72865` code + `27d8a41` prose): the base commit `f27ad17` was skipped, not
+reconciled (its repin is superseded by `8151cab`, its publish-prerelease rename deleted by
+the cutover), and the config keeps `0.3` over dev's `0.2` — the bump table's line, 0.2.0
+being the poisoned base the sweep exists to retire. Battery, lint-workflows, and
+validate-release-plan re-ran green at the rebased SHA; the operator had already pushed
+the pre-rebase branch (`origin/toolkit-cutover` = `925e8c2`), so the rebase lands as a
+force push — operator-owned like every push.
+
+Simple-publisher tier CLOSED (operator-confirmed, registry-verified 2026-10-11): all
+three repos landed through their gates (the pydantic-settings-pulumi rebase force-push
+included), promoted dev → main, and stable-published — `logger-conf 0.3.0`,
+`openapi-client-codegen 0.3.0`, `pydantic-settings-pulumi 0.3.0` live on PyPI, each with
+its dev prerelease beneath it (`0.3.0.dev54` / `.dev80` / `.dev35`; upload timestamps
+~05:14 UTC — the dev-landing-then-stable-promotion sequence, both directions green).
+Verification note for future sessions: the unversioned `/pypi/<pkg>/json` endpoint served
+stale CDN cache that briefly showed no 0.3 line at all — confirm load-bearing registry
+facts on the version-scoped endpoint, which returned fresh data. The operator closes the
+session here; toolkit dev carries unpushed plan-record commits (push before consumer CI needs
+nothing from them — consumers pin `c1f000c`). Next session:
+placeframe first, then placeframe-capture-tool (order load-bearing — capture-tool
+consumes placeframe's UPM packages, so placeframe's new line must exist on the registry
+before capture-tool relocks onto it); pull both clones before touching them (their local
+devs lag their phase tips); the per-repo specifics paragraph carries both inventories
+(placeframe: 8× `registries:`→`registry:`+`identity:`, drop `ci_workflow`, mirror-images
+precedes preflight, `.github/workflows/AGENTS.md` prose update load-bearing, `cesium.yml`
+dispatch-only signature checks, `publish-compose` stays local permanently, DB battery in
+its preflight script with `packages: read`; capture-tool: `builds` dict→list,
+`update-pr-draft-release` adoption, new-line UPM pins, supersede stale local branches;
+bump table: placeframe's 8 packages +1 minor each).
+
+Session record (2026-10-11, placeframe node): the cutover rides local branch `toolkit-cutover`,
+seven reviewable commits on `origin/dev` — two design-doc prose commits, the CI-script port
+off ci-devkit with the devkit-stables relock, the workflow cutover pinning the toolkit tip,
+the agent-docs prose update, the openapi-client-codegen relock (below), and the canonical
+`Run generate-clients` regen. Verified green locally: battery pieces (ruff, format, basedpyright,
+pytest, the full DB preflight with docker postgres, `generate-clients --check` api-scope),
+lint-workflows, validate-release-plan — the last two against the toolkit clone. The config split `placeframe-api-client` into TWO entries on
+one path — `placeframe-api-client` (nuget) + `placeframe-api-client-npm` (npm
+`org.outernet.placeframe.apiclient`, fresh tag line) — the one-package-one-ecosystem law
+against the old dual-`registries:` map; both lines move together because they share the
+path, `placeframe-core`'s sentinel edge on the npm identity resolves through the new entry,
+and all 9 entries publish at cutover (forced-publish for bumped lines, tag-None for never-
+published). ci-devkit is DISSOLVED out of placeframe entirely: `ci_step` banners became
+plain prints in preflight/publish-compose/cesium, cache/setup_oras moved to
+build-artifact-registry, the cesium pipeline ported to unity-devkit 0.3's
+`restore_or_activate_license(registry, tag)` (the pre-0.1.21 `restore_license()` was long
+dead — cesium codegen/combine were already broken at runtime under the old 0.1.25 lock),
+and runner provisioning (disk, dotnet, node, safe.directory) moved into cesium.yml
+pre-steps per the binding's own law — scripts assume a provisioned environment. cesium.yml
+also had five `uv run<verb>` missing-space typos (the dispatch-only workflow was silently
+broken) and its third-party actions are now SHA-pinned (zizmor's blanket hash policy —
+actions/checkout and setup-uv reuse the toolkit's own pins). Two staleness gates watched
+hand-owned files: the repo preflight's datamodels pathspec now scopes to `src/` (the
+force-include hygiene edit dirtied it), and the datamodels force-include itself was
+REVERTED — it is a no-op (already shipped via `packages`), but openapi-client-codegen's
+`--check` pathspec covers the whole generated root, so dropping it needs a codegen-side
+pathspec change first; recorded here as inspected-no-op. The relock: bashrun 0.8.0,
+build-artifact-registry 0.2.0 (new dep), docker-devkit 0.3.0, unity-devkit 0.3.0,
+python-devkit 0.3.0, openapi-client-codegen 0.3.0, logger-conf 0.3.0, typer 0.27.3,
+pydantic 2.14.0 — and ruff HELD at 0.14.14 (see below). placeframe's `.python-version`
+3.13 pin was already landed. Residue: placeframe's origin remote spells `plerion.git`
+(redirects cover it; rename housekeeping host-side, same class as build-artifact-registry's
+ci-devkit URL carry).
+
+Toolkit fix riding this node: NONE — the openapi-generator python template's shipped CI workflow
+(`python.yml` inside every generated client, unpinned template actions) tripped lint-workflows
+24-high at placeframe, and the answer landed at the source instead of a shared-config carve:
+openapi-client-codegen now suppresses the template's whole inert-CI class at generation (see
+the retirement record below), so the shared zizmor config carries no python.yml ignores and
+never did on a pushed tip. placeframe pins the pushed toolkit dev tip — the operator pushes
+toolkit dev BEFORE placeframe's PR runs CI; the sweep's fresh-SHA
+law carries it to later consumers atomically.
+
+The ruff 0.17 blocker (first live hit; will recur at every remaining node): ruff 0.17 +
+the canonical config's `preview = true` surface 51 findings at placeframe — ~40 are
+mechanical (RUF105 converts every `# noqa:` to the new `# ruff: ignore` syntax; RUF069
+float-equality in tests; RUF201 selector syntax in local layers; ICN001 `datetime as dt`
+in GENERATED datamodels), but ASYNC119 flags the Litestar DI idiom
+(`async with session.begin(): yield session` ×3) with no honest local fix, and PLW0717
+flags the sanctioned long-loop-boundary shape (reconstructor main loop, 15 statements).
+The canonical is the single door for fleet lint triage, so python-devkit dev carries the
+triage (`9945222`, unpushed): ASYNC119 + PLW0717 join the "Temporarily ignored (will
+enable when conventions are established)" block with rationale. Until python-devkit
+publishes that line, a consumer cannot both take ruff 0.17 and stay green (sync-ruff
+--check compares the committed ruff.base.toml against the LOCKED python-devkit's
+canonical) — so placeframe's cutover lock holds ruff at 0.14.14 with everything else on
+stables, and the 0.17 wave (canonical re-sync + relock + the ~40 mechanical fixes +
+ruff.toml ICN001 generated exclusion, all diagnosed and reverted cleanly here) rides each
+repo's next relock once python-devkit ships. Note for that wave: ruff 0.17's stricter
+noqa parser also warns on the org-mandated `# noqa-wrapper:` header comment (warning
+only, not a finding), and RUF105's autofix syntax (`# ruff: ignore`) is UNREADABLE by
+ruff 0.14 — the conversions must land in the same commit as the 0.17 lock bump, never
+before. Operator sequencing for this node: push toolkit dev first, then placeframe PR →
+label → merge → promote (stable publishes the 0.2/1.1 lines — npm stays put until then);
+python-devkit's `9945222` lands on its own schedule but blocks every ruff-0.17 relock
+after it. Verify before labeling: `NUGET_USER` exists as a per-repo placeframe secret
+(the old workflows-AGENTS prose called it an org secret — if it is org-level, re-create
+per-repo and delete the org one; the login must not switch on fleet-wide) and the usual
+MERGE_BOT/evergreen-dev wiring. The dev channel's first run will publish dev prereleases
+of all nine entries, including `placeframe-api-client-npm`'s fresh line — npm
+trusted-publisher rows for `org.outernet.placeframe.apiclient` already exist (it
+published under the old single-entry flow); the filename binding (`release.yml`) is
+unchanged.
+
+Session record (2026-10-11, generated-CI-baggage retirement): openapi-client-codegen `0.3.1`
+published (branch `suppress-python-template-workflow`, `5e1deeb`) — the shipped
+`openapi-generator-ignore` gained `**/python.yml`, `**/.travis.yml`, `**/.gitlab-ci.yml`
+(the template's whole inert-CI class; placeframe's committed trees carried all three).
+Standing discovery, verified A/B against the live generator (7.22.0): anchored patterns
+(slash-containing, root-relative, e.g. `.github/workflows/python.yml`) do NOT match in
+openapi-generator's ignore implementation — only slash-free/`**`-prefixed globals do, which
+is why the pre-existing `.gitignore` entries work; the file's comment records it. Empirical
+verification harness note: `uvx --from <local-path>` serves a stale cached env through
+`--refresh-package` and `uv cache clean <pkg>` — only outer `--no-cache` forces the rebuild.
+placeframe rode two commits on `toolkit-cutover`: the relock onto 0.3.1 (with lock-python
+convergence of the per-service pylocks, which had lagged the cutover relock) and the
+canonical `Run generate-clients` (9 deletions, 3 FILES manifests, csharp byte-identical;
+specs unchanged so `--no-cache` was required past the short-circuit; `--check` green on the
+committed tree, ruff/format clean). Certified by lint-workflows green over BOTH trees — the
+toolkit's own and placeframe's (via `uv run --project <toolkit> lint-workflows`, cwd
+placeframe) — plus validate-release-plan exit 0 and the toolkit battery (160 tests); the
+shared zizmor config stays carve-free (`rules: {}`), and no consumer tree carries template
+CI baggage. Both local stacks were then rebased for review onto their origin/dev tips
+(backups under `backup-pre-review-rebase`): the toolkit's six plan-record commits squashed
+to one prose commit with the carve add/retire pair expunged net-zero, placeframe's obviated
+pin-bump/doc-rename/repin commits dropped with the cutover commit pinning the rebased
+toolkit tip directly. Operator: push toolkit dev (one commit) before placeframe's PR runs
+CI, then placeframe's PR carries the seven-commit series.
 
 Open carries, decisions pending: build-artifact-registry's wrapper-era 3.15 carry is RESOLVED
 — the cutover deleted the wrapper (its reusables pin `66df38b`, past the 3.13 pin), confirmed
@@ -560,8 +720,12 @@ placeframe's new line must exist on the registry before capture-tool relocks ont
 ObserveThing, StatefulUnity go last). Devkit self-cutovers first (build-artifact-registry,
 github-actions-toolkit's own files beyond `$/` refs — none needed, python/docker/unity/devkit
 repos themselves), then simple publishers (logger-conf, openapi-client-codegen,
-pydantic-settings-pulumi, lbe-toolkit), Make-it-Sing, placeframe, placeframe-capture-tool,
-then Nessle, ObserveThing, StatefulUnity.
+pydantic-settings-pulumi — lbe-toolkit removed from the tier by operator ruling 2026-10-11),
+placeframe, placeframe-capture-tool, then Make-it-Sing and lbe-toolkit (lbe-toolkit's
+cross-repo edge consumes placeframe's UPM line, so placeframe must publish its new line
+before lbe-toolkit relocks onto it; Make-it-Sing rides the same tier by the same ruling;
+lbe-toolkit's operator prerequisites verified before its label), then Nessle, ObserveThing,
+StatefulUnity.
 
 **Per-repo specifics (from reconnaissance; mechanics re-aimed).** placeframe: 8×
 `registries:`→`registry:`+`identity:`, drop `ci_workflow:`, `built_images: true` confirmed,
