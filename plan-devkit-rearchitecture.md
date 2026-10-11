@@ -48,31 +48,37 @@ per repo (a wrapper bump past d982657 alone forces the labeled-only wake and the
 findings onto un-migrated files — Phase 7's cutover spells the atomicity). Transitional noise,
 self-healing: unity-devkit's main still carries the old workflow_run-woken merge-gate.yml,
 failing loudly on the now-required `--head-sha` until main receives the new file (dev → main
-promotion or the sweep). Phase 4 (docker-devkit) is code-complete on branch
-`phase4-explicit-push` (based on origin/dev `ecc7fb5` through PR #9; `fc5bc25` `2fa2bc7`
-`820915a`, unpushed — operator): `build --push` replaces `--mode ci` over the neutral
-`REGISTRY`/`REGISTRY_TOKEN`/`REGISTRY_USERNAME` env (flag order mirrors the binding run line;
-`--targets` accepts both repeated flags and one space-joined value), `docker-build-matrix`
-emits bare leg lists with the cross-compile cohort (`x-cross-compile-targets` ∪ any service
-declaring `platforms:`) split into its own variant×cohort legs — a group spanning cohort
-membership is a loud error; leg schema stays `{targets, variant}`, named contract — and the
-line bumps `0.2` → `0.3` with the ci-devkit dependency swapped for build-artifact-registry
-(the dev group also relocked onto python-devkit `>=0.3.0.dev0`, removing the frozen
-distribution from the lock entirely). New diagnosis riding this phase: the digest-manifest
-shelf push (landed on docker-devkit dev via PRs #5–#9, never live — every consumer locks
-0.1.23) was last-writer-wins across parallel legs at one shared `sha-{full}` tag; Phase 4's
-matrix makes fanout the only shape, so the defect would have fired at placeframe's cutover.
-Fix (both sides committed, both unpushed): each leg shelves its own shard
-`sha-{full}-{key8-of-sorted-targets}` (docker-devkit side), and the toolkit's
-`pull_digest_manifest` enumerates a SHA's shards and merges at pull time — consumption only
-ever runs after every leg finished, so the merge is race-free where a push-side merge could
-not be; the bare `sha-{full}` tag remains a one-shard fallback. Landing order: the toolkit's
-dev (through `ee719cb`) pushes FIRST — the pilot's cutover pins a fresh toolkit SHA and needs
-the merge at pull — then docker-devkit's branch lands via its merge-gate and `0.3.0.devN`
-rides its release.yml. Capture-tool's pilot docker fanout is ONE leg (all three services are
-cohort, one common cell — invocation-identical to today's hand-enumerated job); placeframe's
-is three (common/cuda/rocm), the first live exercise of the shard merge. The Phase 6 pilots
-and the Phase 7 sweep follow.
+promotion or the sweep). Phase 4 (docker-devkit) landed: PR #10 merged as `7c82d56`, riding
+`build --push` over the neutral `REGISTRY`/`REGISTRY_TOKEN`/`REGISTRY_USERNAME` env (flag
+order mirrors the binding run line; `--targets` accepts both repeated flags and one
+space-joined value), `docker-build-matrix` emitting bare leg lists with the cross-compile
+cohort (`x-cross-compile-targets` ∪ any service declaring `platforms:`) split into its own
+variant×cohort legs — a group spanning cohort membership is a loud error; leg schema stays
+`{targets, variant}`, named contract — the line bumped `0.2` → `0.3` with the ci-devkit
+dependency swapped for build-artifact-registry (the dev group also relocked onto python-devkit
+`>=0.3.0.dev0`, removing the frozen distribution from the lock entirely), and `0.3.0.dev113`
+rode release.yml onto PyPI. New diagnosis from this phase: the digest-manifest shelf push
+(landed on docker-devkit dev via PRs #5–#9, never live — every consumer locked 0.1.23) was
+last-writer-wins across parallel legs at one shared `sha-{full}` tag; the Phase 4 matrix
+makes fanout the only shape, so the defect would have fired at placeframe's cutover. Fix
+(landed, both sides): each leg shelves its own shard `sha-{full}-{key8-of-sorted-targets}`
+(docker-devkit side), and the toolkit's `pull_digest_manifest` enumerates a SHA's shards and
+merges at pull time — consumption only ever runs after every leg finished, so the merge is
+race-free where a push-side merge could not be; the bare `sha-{full}` tag remains a
+one-shard fallback. The landing order held: the toolkit's dev pushed first (through `84b0e14`,
+which carries the shard merge), then docker-devkit landed. Capture-tool's pilot docker fanout
+is ONE leg (all three services are cohort, one common cell — invocation-identical to today's
+hand-enumerated job); placeframe's is three (common/cuda/rocm), the first live exercise of the
+shard merge. The landing's merge-gate run went red after the real steps — the same cleanup-tag
+422 (`gh release delete pr-10 --cleanup-tag`), because docker-devkit's toolkit pin predates
+`4e12952`; the pin also predates the toolkit's 3.13 pin (the merge-gate clone's venv resolved
+3.15 — the stall pattern, survived). The PR merged and published; the `pr-10` draft lingers
+(hidden, the accepted leak). Consequence: every pre-sweep consumer landing through a
+pre-`4e12952` pin takes this red-after-success; docker-devkit's workflows are already the
+post-migration shape, so a plain repin of its `uses:` refs to a fresh toolkit SHA (≥ `84b0e14`)
+is atomic-safe and clears both the 422 and the 3.15 stall — the cheap candidate before the
+sweep, same class as build-artifact-registry's carry below. The Phase 6 pilots and the Phase 7
+sweep follow.
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
