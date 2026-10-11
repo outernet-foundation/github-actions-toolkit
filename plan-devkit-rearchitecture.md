@@ -209,6 +209,32 @@ relock onto bashrun 0.8/pydantic 2.14/typer 0.27.3; battery, lint-workflows, and
 validate-release-plan all green locally). Remote toolkit dev verified at `66df38b` (App token);
 the plan-record commits ride local until the operator pushes.
 
+Session records (2026-10-11, docker/unity node pair): the toolkit briefly grew an
+`execute-method` call input on `compile-check-unity.yml` for unity-devkit's self-consumption —
+the operator design-review rejected it (per-project facts belong in the per-project config or
+nowhere), and the ruling went further after inspecting what the self-test was:
+`EnvironmentFixtureSelfTest` (the harness's one executed C# test — a dress rehearsal of
+PlayerBuild's environment materialization against a fixture asset, asserting outcomes a real
+build never checks) is EXPUNGED entirely, operator ruling, with every trace: `Assets/Editor/`
+(FixtureEnv.cs, the preset asset, the driver), the dead `tests/fixtures/environment-dump.json`,
+and — because their only caller died — the `--execute-method`/`--build-target` flags on
+`compile-check-unity` itself (the method-driver mode had zero fleet users; `PLAYERBUILD_ENTRY`
+hard-coded in the build verb is the only executeMethod the fleet needs). The compile gate is
+compile-only everywhere now, uniform by construction. Accepted risk, on the record: the
+reflection-driven materialization failure mode (compiles green, silently misapplies settings,
+surfaces as mysterious consumer builds) has NO detector in the fleet; the operator chose
+uniformity over the smoke test. Both nodes cut over on the plain reusable set at `66df38b`
+(unity-devkit: workflow files, wrapper + actionlint.yaml deleted, scripts/preflight.py,
+hatch include hygiene, relock onto bashrun 0.8/bar 0.2.0/python-devkit 0.3.0 all stable;
+docker-devkit: same shape, plus one real lint fix — ruff 0.17's unconventional-import-alias
+wanted `datetime as dt` in image_refs.py). Both verified locally: battery, lint-workflows,
+validate-release-plan. unity-devkit branched off the phase-3 tip `d7c2324`, docker-devkit off
+the phase-4 tip `820915a` — local devs lag; handed to the operator for push, green, merge,
+promotion (unity-devkit's stable channel will publish both `unity-devkit 0.3.0` and
+`org.outernet.playerbuild 0.3.0` — the npm-through-composite stable publish is then
+live-certified). The devkit self-cutover tier is complete pending these landings; next tier:
+simple publishers (logger-conf, openapi-client-codegen, pydantic-settings-pulumi, lbe-toolkit).
+
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
