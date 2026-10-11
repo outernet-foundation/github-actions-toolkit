@@ -99,7 +99,22 @@ main still fires its old workflow_run-woken gate red on integrate completions (t
 unity-devkit transitional-noise class) until dev → main promotion carries the new file. The
 PyPI-through-composite verification gate is effectively pre-answered: docker-devkit's
 `0.3.0.dev113` rode the composite release.yml onto PyPI at Phase 4's landing; bashrun's
-landing re-exercises it on the preflight+gate path.
+landing re-exercises it on the preflight+gate path. Second pilot finding, live-diagnosed: the
+reusable cutover renames check runs from bare job names to two-part `caller / called` names
+(`preflight` → `preflight / preflight`), and two name-exact contracts still spelled the bare
+names. One: the `evergreen-dev` ruleset's required check `preflight` never matched again —
+GitHub posts the expectation forever, a pending required check with no associated action on
+the PR page. Resolution (operator ruling): required checks are REMOVED from evergreen-dev
+entirely — the ruleset carries ref mechanics only; check policy lives in the gate verb's
+all-green battery, the sole writer (merge-bot) bypasses ruleset evaluation anyway, and a
+ruleset-level check couples the program to check names that drift on every cutover (no
+per-repo infra work rides future cutovers; the deletion lands on infra-github-org dev as
+`e0e91c4` + its AGENTS.md row). Two: the gate's own self-exclusion demanded its own check
+green — the 02:40 run refused "pending" 51s after integrate went green, its own in-progress
+check the only pending entry. Fix (toolkit `decae45`): `merge_battery` excludes both the bare
+and the two-part spelling of the gate's own check name. Gate check spellings are standing
+contract data for anything name-matching checks; the repo-side residue is none — consumers
+hold no name-coupled contracts.
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
