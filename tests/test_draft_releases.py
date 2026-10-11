@@ -154,13 +154,13 @@ def capturing_bash(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return written
 
 
-def test_delete_draft_release_deletes_with_cleanup_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_delete_draft_release_deletes_without_cleanup_tag(monkeypatch: pytest.MonkeyPatch) -> None:
     bash_log = patch_bash(monkeypatch, check_returns=True)
 
     delete_draft_release("pr-7", "owner/repo")
 
     assert any(
-        "gh release delete pr-7" in command and "--cleanup-tag" in command and "--yes" in command
+        "gh release delete pr-7" in command and "--cleanup-tag" not in command and "--yes" in command
         for command in bash_log.commands
     )
 

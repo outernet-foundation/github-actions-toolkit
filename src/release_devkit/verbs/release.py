@@ -336,7 +336,9 @@ def markdown_table(headers: list[str], rows: list[list[str]]) -> str:
 def delete_draft_release(tag: str, repository: str) -> None:
     if not bash_check(f"gh release view {tag} --repo {repository}"):
         return
-    bash(f"gh release delete {tag} --cleanup-tag --yes --repo {repository}")
+    # no --cleanup-tag: a draft never materializes its tag until publish, and
+    # these drafts are never published, so the tag ref does not exist
+    bash(f"gh release delete {tag} --yes --repo {repository}")
 
 
 # actions/checkout sets safe.directory in a temporary HOME that's cleaned up
