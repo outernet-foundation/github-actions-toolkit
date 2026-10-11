@@ -695,6 +695,39 @@ separate commits, `--refresh` on relocks). Pull the docker-devkit clone before t
 (its local dev lags the phase-4/promotion tips); its consumers' `x-base-images` flips ride 8.3,
 not 8.2. The plan-record commit for this close rides local until the operator's next push.
 
+Session record (2026-10-11, Phase 8.2 executed on docker-devkit): branch `mirror-prefix-injection`, five commits off dev
+`ae0ec2b` (the clone was already current — the prior close's lag warning was stale; local dev = origin dev = main, PR
+#11's tip, `docker-devkit-v0.3.0` tagged there). One plan ambiguity resolved by identification, on the record: the
+phase's "`up`'s `--pull-unmirrored` flag" names a flag that NEVER existed in docker-devkit's history — it is
+`--allow-upstream-fallback` (the flag's own help text reads "Pull unmirrored lock entries from upstream at the same
+digest instead of failing closed", which the plan compressed). Scope of the deletion follows from the plan's own
+clause that `is_mirrored`/`upstream_ref` die completely — that is only achievable if the upstream-substitution escape
+dies with the flag (the substitution IS `upstream_ref`), while the fail-closed probe stays as the loud edge:
+`upstream_fallback`/`write_fallback_overlay`/the `run_build` `env_overlay` plumbing are deleted, replaced by
+`enforce_mirrored` (probe every lock entry — all mirror-prefixed by construction — hard error with the flag hint
+removed from the message; the remedy the text teaches is CI's mirror job, never an org-namespace push). Landed:
+manifest resolution collapsed to `workloads/images.yml` + `workloads/images.lock` (`MANIFEST_CANDIDATES`/
+`MANIFEST_LOCK_PAIR`/`LOCK_CANDIDATES` and the `compose*.bake.yml` glob in `declared_references` die; fixtures
+retargeted, including the version-coupling fixtures collapsing to the single manifest with upstream-native values);
+prefix injection (`mirrored_ref(reference, prefix)` is the only join — double-prefix guard raises, `x-base-images`
+non-empty with no `mirror:` section raises in `build` via the `update_lock_entries` phase extraction, which also
+solves basedpyright's narrowing on the config-or-None); the mirror verb copies EVERY declared reference
+(`crane copy {ref} {prefix}/{ref}`, `mirror_targets` dies with the startswith matching); lock values stay
+byte-identical (digests resolve against upstream, recorded under the derived name; digest-pinned declarations pass
+through prefixed; cached entries still skip on the derived base). Workflows untouched — the toolkit pin stays
+`66df38b` (the repin to `48250c4` + `publish.yml` rename ride 8.3's resweep leg, per plan; consumers' `x-base-images`
+upstream-native flips are likewise 8.3, and the double-prefix guard makes a pre-flip prefixed declaration a LOUD
+error on 0.4 — expected, the atomic-cutover pressure by design). No relock (no dependency changes; the `--refresh`
+law had nothing to do). `major_minor` `0.3` → `0.4` in its own commit. AGENTS.md rewritten in the prose commit (bridge
+sentences gone, "Mirror namespace" section re-authored for injection, `up`'s flag dropped from its row).
+Verification: `scripts/preflight.py` green end to end (ruff/format/basedpyright/deptry/sync-ruff/pytest — 132
+tests, down from 150: the legacy-resolution, inversion, fallback, and overlay classes died, the injection/guard/
+enforce classes arrived), and lint-workflows + validate-release-plan green against a worktree of the toolkit clone
+AT THE PIN `66df38b` (CI parity — the toolkit tip expects `publish.yml`, which this repo carries only from 8.3).
+Handoff: operator pushes the branch, opens the PR, labels after CI certifies (MERGE_BOT/evergreen-dev wiring
+already live from PR #11), merges, promotes dev → main; the stable channel then publishes `docker-devkit 0.4.0`.
+After that, 8.3 opens (the resweep list; placeframe's leg still queued behind PR #136's landing sequence).
+
 Ruled out (do not re-propose without new information): an added composite-lint layer
 (bettermarks/composite-action-lint surveyed).
 
