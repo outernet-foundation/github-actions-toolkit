@@ -728,6 +728,24 @@ Handoff: operator pushes the branch, opens the PR, labels after CI certifies (ME
 already live from PR #11), merges, promotes dev → main; the stable channel then publishes `docker-devkit 0.4.0`.
 After that, 8.3 opens (the resweep list; placeframe's leg still queued behind PR #136's landing sequence).
 
+Session close (2026-10-11, 8.2 end to end): the operator pushed, merged, and promoted — PR #12
+"Mirror prefix injection" landed through its gate, dev = main = `4a9c14c`, and stable `docker-devkit 0.4.0` is live
+on PyPI (verified on the version-scoped endpoint, wheel + sdist): Phase 8's first node complete through main, and
+the `--pull-unmirrored` → `--allow-upstream-fallback` interpretation is ratified by landing. Residue: docker-devkit's
+local clone lags again (its `mirror-prefix-injection` branch = pre-merge `df7a4ce`; local dev sits behind the merge
+commit) — operator pulls before the next session touches it, and its stale local branches supersede at the 8.3 leg.
+After this close toolkit dev carries three unpushed plan-record commits (`ed097c4`, `d2c3a9b`, this close) — nothing
+code-bearing (consumers pin `48250c4`), but push first per the standing pattern. Next session: Phase 8.3 — the
+resweep (build-artifact-registry, bashrun, python-devkit, logger-conf, openapi-client-codegen,
+pydantic-settings-pulumi, unity-devkit, docker-devkit self: repin every `uses:` to `48250c4` + `git mv
+release-devkit.yaml publish.yml`, one commit each) and the remaining Phase 7 nodes cutting over directly into the
+Phase 8 grammar (placeframe-capture-tool, Make-it-Sing, lbe-toolkit, then Nessle, ObserveThing, StatefulUnity);
+consumers' `x-base-images` upstream-native flips and relocks onto docker-devkit `0.4` ride their legs atomically
+(the double-prefix guard makes a pre-flip declaration a loud error on 0.4 — by design). placeframe's resweep leg is
+gated on PR #136's landing sequence completing first (verify the per-repo `NUGET_USER` secret and
+MERGE_BOT/evergreen-dev wiring before labeling; the ruff-0.17/python-devkit `9945222` blocker unchanged). Pull
+every touched clone before touching it.
+
 Ruled out (do not re-propose without new information): an added composite-lint layer
 (bettermarks/composite-action-lint surveyed).
 
