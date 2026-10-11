@@ -137,7 +137,41 @@ tip; the flag is removed from `main-append-only` (infra `dev`, `44a5c1e` + AGENT
 `e3edd29` — fast-forward + undeletable stay, evergreen-main's operator-only update rule
 stays). The correct main envelope is exactly: only the operator updates, updates are
 fast-forwards, deletion blocked for everyone; "main only ever advances to a promoted dev
-SHA" remains procedural (no ruleset primitive binds a tip to another branch).
+SHA" remains procedural (no ruleset primitive binds a tip to another branch). The promotion
+then passed (main = dev = `cc809cb`, the phantom workflow_run gate on main dying with it —
+main now carries the labeled-only file), but the stable channel — its first live exercise —
+executed the DEV channel and went green doing it (run 38107631822): it built
+`bashrun-0.7.0.dev83`, `uv publish --check-url` skipped the upload (PR #9's landing already
+published that version), it appended a dev-builds section, pushed no `bashrun-v0.7.0` tag,
+cut no CalVer release, and reset nothing. PyPI carries NO `0.7.0`.
+
+OPEN ISSUE (next session diagnoses; this one closed by operator ruling before landing a
+second fix): the release composite's channel selection from the `stable` boolean input.
+Composite inputs ride stringified inside `${{ }}` expressions, and both expression forms are
+now live-proven broken in opposite directions — v1 `inputs.stable && 'stable' || 'dev'`
+read the stringified `"false"` as truthy (the dev job ran stable at PR #8's landing,
+publishing the untagged `0.6.0` orphan); v2 `inputs.stable == true && 'stable' || 'dev'`
+(`feef989`) number-casts the stringified `"true"` away from boolean true (the stable job
+ran dev at the promotion). Any fix must stop evaluating the input in GitHub expressions
+entirely; `persist-credentials: ${{ inputs.stable }}` (direct forwarding into a typed
+action input) is correct and unaffected. One shape was drafted and REVERTED unlanded
+(operator abort): `STABLE: ${{ inputs.stable }}` riding step env — the env crossing
+stringifies deterministically — with an `if [ "$STABLE" = "true" ]` bash branch selecting
+the channel beside the existing run line. The next session re-derives or replaces it; the
+toolkit AGENTS.md flags the current expression as broken so no session trusts it.
+
+Recovery sequence once the composite is fixed: land the fix on toolkit dev; bashrun repins
+its `uses:` refs through the gate (branch off the current dev tip — local clones lag
+origin after runner-side merges; the operator pulls, the agent never fetches and never
+uses prepo); the landing's dev channel publishes the next `0.7.0.dev{count}`; then the
+operator re-promotes `dev:main` (fast-forward) and the stable channel runs its first
+correct pass — publishes `0.7.0`, tags `bashrun-v0.7.0`, cuts CalVer `2026.10.4`, resets
+`dev-builds`. Re-running 38107631822 is useless: a rerun re-executes the composite at the
+SHA cc809cb's release.yml pins (the broken v2), and release.yml has no workflow_dispatch
+trigger. Pilot state otherwise standing: preflight and the gate reusable certified on two
+landings; the composite dev channel certified (`0.7.0.dev83` live on PyPI); trusted
+publishing through composite-wrapped steps accepted; the stray `0.6.0` orphan stays by
+ruling; placeframe-capture-tool pilot and the Phase 7 sweep remain.
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
