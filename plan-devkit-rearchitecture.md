@@ -30,65 +30,27 @@ is one lint wall-clock per green PR), and lint-in-integrate is certification for
 authors, never a security boundary — PR-authored YAML can simply delete it (the PPE class
 of threats is answered by Phase 7's org-level rulesets, not by lint placement).
 
-In flight — Phase 3, unity-devkit half, code-complete on branch `phase3-domain-purification`
-(based on dev plus the unpushed 3.13 pin `f420cc3` riding it): `ci-build-unity` is deleted
-with `build-unity` absorbing the CI shape (execution ruling on the shelving discriminator:
-"supplied registry env" reads as `--registry` supplied — empty is the local build — not
-auth-env presence, so a local shell with exported `REGISTRY_*` credentials never trips the
-CI shape); the matrix verbs emit bare JSON arrays (legs `project`/`platform`/`editor-image`;
-`unityci-image-module` dropped from the schema as unconsumed by every post-flip consumer;
-the `matrix=`/`license=` `$GITHUB_OUTPUT` lines dead); `--license`→`--license-cache-key`;
-`--version-code`→`--commit-count`, with `build_player` rendering both Unity fields from the
-one input pair; typer declaration order mirrors the binding's switch order exactly
-(compile-check's required `--registry` after defaulted options is spelled as an empty
-default plus a loud required check — the typer `= ...` required marker fails basedpyright
-strict); `ci_step`/`setup` imports dead — the Setup `install_dotnet` call was already
-redundant (`prepare_unity_project` provisions dotnet on demand) and `configure_git`'s
-safe.directory became a binding pre-step in build-unity.yml (the toolkit's unpushed
-`b5d72ce` + AGENTS.md `9301dc9`; the verb's `git rev-parse HEAD` needs the trust in the
-container); the `ci-devkit` dependency replaced by `build-artifact-registry>=0.2.0.dev0`;
-`install`'s `pull_build`→`pull_artifact`; unity-devkit's own integrate.yml getter renamed
-`plan-unity-compile-checks`, piping through the pinned clone's `matrix` verb with the wrapper
-pin bumped to the certified head `d9826576a567b0081dd0f705f4a7eb8a9d2a0646` — which forced
-its merge-gate.yml to the labeled-only wake (the new lint bans `workflow_run` outright) and
-put `--locked` on every `uv run`; `major_minor` 0.3 on both `unity-devkit` and `playerbuild`;
-AGENTS.md rewritten (the consumer template section replaced by the reusable reference, the
-env contract and version-stamping constraints updated). The relock landed
-(`build-artifact-registry==0.2.0.dev38099046697`, the highest on PyPI — 0.2 stable is not yet
-promoted, the prerelease line is the intended target; `ci-devkit` survives in the graph only as
-stale python-devkit 0.1.15's transitive, whose floor bump is sweep work) and the full battery is
-green locally: the python battery (format, basedpyright strict, deptry, lock check, 42 tests),
-`lint-workflows` and `validate-release-plan` against a d982657 clone. The battery surfaced an
-unrecorded consequence of the wrapper bump: the certified head's zizmor (v1.30.1, `rules: {}`)
-red-flags the transitional hand-spelled files — unpinned-uses (the checkout/setup-uv/
-create-github-app-token tag refs), self-repository (the `./` wrapper), github-app (the unscoped
-token mint). Fixed transitionally, phase-scoped: the three actions SHA-pinned with spellings
-mirrored from the toolkit's own files at d982657, the wrapper ref flipped to
-`$/.github/actions/…` (hosted jobs only; the unity leg's raw checkout is untouched, so the
-runner-version risk still defers to the first reusable-riding unity leg), the mint scoped
-`permission-contents: write` / `permission-pull-requests: read`, the wrapper's clone URL
-canonicalized to `github-actions-toolkit` (the redirect had been masking the abandoned spelling).
-Fleet consequence, standing: every consumer that bumps its wrapper past d982657 before its
-cutover hits the same wall — wrapper bump and cutover stay one atomic step per repo (the sweep's
-plan already spells this). The branch is pushed (rebased) as PR #8: every hosted job green, the
-unity compile leg red — root cause in build-artifact-registry 0.2, not the YAML: the split gave
-`builds.*` self-authentication (`ensure_registry_login` on entry) but left `cache.restore`/
-`cache.save` with none — they only ever worked via old ci-devkit `install_oras()`'s hardcoded
-`ensure_registry_login("ghcr.io")` side effect, so post-relock oras ran anonymous (restore read
-the denied HEAD as a miss, license activated, save's push failed loudly). Fix on
-build-artifact-registry branch `cache-self-auth`, battery green: cache restore and save
-authenticate through the neutral chain on entry (mirroring builds.py — same seam, same rule),
-and restore treats a registry refusal (denied/unauthorized/forbidden in the pull output) as a
-loud FATAL, never a miss — the distinction only becomes meaningful authenticated (anonymous
-ghcr answers "denied" to nonexistent packages too). The fix is landed and released: a fresh
-`0.2.0.devN` prerelease sits on PyPI on the same unpromoted base (every `>=0.2.0.dev0` floor
-already admits it). Remaining Phase 3 steps, in order: relock unity-devkit onto the fresh
-prerelease (`uv lock` — the exact pin moves, the floor does not), operator pushes to PR #8
-for the re-run, `ready-to-merge` once green and rebased; the `0.3` dev prerelease rides its
-own release.yml and closes the phase. Phase 4 (docker-devkit) follows per the plan's order.
-Open carries,
-decisions pending: build-artifact-
-registry's own CI resolves 3.15 in the wrapper-driven jobs — its wrapper pins `029a9a6`, a
+Phase 3 (unity-devkit) landed: the relock onto the cache-self-auth prerelease moved the exact
+pin to `build-artifact-registry==0.2.0.dev38101394871` (`uv lock --refresh --upgrade-package
+build-artifact-registry` — both the plain lock and plain `--upgrade-package` silently kept the
+stale pin off a warm index cache; the sweep's relocks carry `--refresh`), integrate went fully
+green including the unity compile leg on the self-hosted pool (the cache fix's first live
+certification), the labeled merge-gate landed PR #8 as `85e66c1`, and `unity-devkit 0.3.0.dev223`
+rode its release.yml onto PyPI. The landing surfaced one bug, fixed on this repo's dev
+(`4e12952`, unpushed): the merge-gate run goes red after every real step — `gh release delete
+--cleanup-tag` 422s on the pr draft because a draft never materializes its tag until publish
+and these drafts are never published; `--cleanup-tag` is dropped from `delete_draft_release`
+(both call sites — `pr-{N}` and the stable channel's `dev-builds` reset — delete never-published
+drafts). Standing reading: a red merge-gate conclusion on a pre-fix pin means nothing once the
+merge, branch-delete, and draft-delete lines have printed; the sweep's one fresh toolkit SHA
+carries the fix atomically with every cutover. Wrapper bump and cutover stay one atomic step
+per repo (a wrapper bump past d982657 alone forces the labeled-only wake and the strict-lint
+findings onto un-migrated files — Phase 7's cutover spells the atomicity). Transitional noise,
+self-healing: unity-devkit's main still carries the old workflow_run-woken merge-gate.yml,
+failing loudly on the now-required `--head-sha` until main receives the new file (dev → main
+promotion or the sweep).
+Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
+wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
 discovers the interpreter from the clone (the repo's own pin cannot reach it; `tools/devkit`
 lacks a `.python-version` as a secondary door; its repo CI keeps the hand-written shape
@@ -110,11 +72,11 @@ stalls (pinned repos were immune). Resolution: `.python-version` pins (`3.13`);
 `requires-python` ranges stay open by design (the pin wins discovery; operator declined
 bounding). This repo's pin is landed on dev (the fleet-load-bearing one: `uv run --project
 <clone>` discovers the interpreter from the project, so this pin governs every wrapper-era
-and future `$/`-clone install). The rest are committed but UNPUSHED, one per repo, on each
-repo's checked-out branch: unity-devkit (phase3-domain-purification), logger-conf
-(update-release-devkit), lbe-toolkit / Make-it-Sing / Nessle / ObserveThing
+and future `$/`-clone install). The rest are committed but UNPUSHED, one per repo, on each repo's checked-out branch:
+logger-conf (update-release-devkit), lbe-toolkit / Make-it-Sing / Nessle / ObserveThing
 (ci-support-redux each), infra-github-org / infra-github-runners / infra-rathole / infra
-(dev each), prepo (main), pulsar (feature/working). `misc` is not a git repo — no pin, no
+(dev each), prepo (main), pulsar (feature/working) — unity-devkit's landed with the PR #8
+merge. `misc` is not a git repo — no pin, no
 CI. Secondary finding from the same investigation, unfixed: `ensure_actionlint()` fetches
 the upstream checksums file on every run even when the binary is warm-cached — the lint's
 one live network dependency (offline-persona hole; zizmor's hashes are constants here) —
@@ -123,8 +85,9 @@ forever, silently. Fix candidates: checksums as repo constants (zizmor pattern) 
 `--connect-timeout`/`--max-time` on the two downloads.
 
 Carried risks, unobserved: the unity self-hosted fleet's runner version needs ≥ 2.336.0 for
-`$/` (the unity legs execute consumer-checkout and setup-uv on that pool) — the first unity
-leg, Phase 3's landing or the capture-tool pilot, surfaces it. The hosted half is retired:
+`$/` (the unity legs execute the install trio on that pool once the consumer-half flip
+lands) — the capture-tool pilot surfaces it; Phase 3's landing did not (its unity legs still
+raw-checkout). The hosted half is retired:
 PR #3's green re-run certified the install trio's first full live pass (`$/`
 self-reference resolution from a called reusable works on a current hosted runner).
 
