@@ -112,12 +112,10 @@ def make_app(name: str = "myapp", builds: list[BuildArtifactConfig] | None = Non
 def make_config(
     packages: dict[str, PackageConfig] | None = None,
     apps: dict[str, AppConfig] | None = None,
-    built_images: bool = False,
 ) -> PublishConfig:
     return PublishConfig(
         packages=packages or {},
         apps=apps or {},
-        built_images=built_images,
     )
 
 
@@ -297,8 +295,14 @@ def test_stages_all_apps_regardless_of_source_changes(monkeypatch: pytest.Monkey
     assert ("AppB", "AndroidMobile") in pulled
 
 
-def test_any_new_digest_appends_snapshot_section_with_all_images(monkeypatch: pytest.MonkeyPatch) -> None:
-    config = make_config(apps={"myapp": make_app()}, built_images=True)
+def test_any_new_digest_appends_snapshot_section_with_all_images(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = tmp_path / "workloads" / "images.yml"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text("services: {}\n", encoding="utf-8")
+    config = make_config(apps={"myapp": make_app()})
     tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
 
     digest_existing = "sha256:" + "a" * 64

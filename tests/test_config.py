@@ -71,7 +71,6 @@ def test_load_config_defaults_empty_collections(tmp_path: Path):
 
     assert config.packages == {}
     assert config.apps == {}
-    assert config.built_images is False
 
 
 def test_load_config_rejects_unknown_top_level_keys(tmp_path: Path):
@@ -132,7 +131,7 @@ def test_repo_github_actions_toolkit_yaml_loads() -> None:
 
 def test_load_config_rejects_duplicate_keys(tmp_path: Path):
     config_path = tmp_path / "publish.yml"
-    config_path.write_text("built_images: a\nbuilt_images: b\n", encoding="utf-8")
+    config_path.write_text("apps: a\napps: b\n", encoding="utf-8")
 
     with pytest.raises(Exception, match=r"Duplicate key"):
         load_config(config_path)
@@ -184,10 +183,9 @@ def test_load_config_rejects_name_key(tmp_path: Path):
         load_config(write_config(tmp_path, payload))
 
 
-def test_load_config_parses_built_images(tmp_path: Path):
+def test_load_config_rejects_built_images(tmp_path: Path):
     payload = base_payload()
     payload["built_images"] = True
 
-    config = load_config(write_config(tmp_path, payload))
-
-    assert config.built_images is True
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        load_config(write_config(tmp_path, payload))

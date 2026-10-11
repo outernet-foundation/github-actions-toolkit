@@ -19,7 +19,13 @@ from build_artifact_registry.builds import list_build_tags, pull_artifact
 from build_artifact_registry.setup_oras import install_oras
 from pydantic import BaseModel, model_validator
 
-from github_actions_toolkit.config import DEFAULT_CONFIG_PATH, PublishConfig, Settings, load_config
+from github_actions_toolkit.config import (
+    DEFAULT_CONFIG_PATH,
+    IMAGE_MANIFEST_PATH,
+    PublishConfig,
+    Settings,
+    load_config,
+)
 from github_actions_toolkit.plan import (
     UNCHANGED_FALLBACK_VERSION,
     ReleasePlan,
@@ -165,8 +171,8 @@ def main(
         ]
         blocks.append(f"{prefix} Apps\n{markdown_table(['App', 'Platform', 'Version'], assets_rows)}")
 
-    # List the images built at this SHA from the shelf
-    if publish_config.built_images:
+    # List the images built at this SHA from the shelf, declared by the image manifest's presence
+    if IMAGE_MANIFEST_PATH.is_file():
         images = pull_digest_manifest(settings, shelf, sha)
         if images:
             images_rows: list[list[str]] = []

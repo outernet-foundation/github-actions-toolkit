@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings
 from strictyaml import load as load_strict_yaml
 
 DEFAULT_CONFIG_PATH = Path("publish.yml")
+IMAGE_MANIFEST_PATH = Path("workloads/images.yml")
 KNOWN_REGISTRIES = frozenset({"nuget", "npm", "pypi"})
 
 
@@ -64,7 +65,6 @@ class PublishConfig(BaseModel):
 
     packages: dict[str, PackageConfig] = Field(default_factory=dict)
     apps: dict[str, AppConfig] = Field(default_factory=dict)
-    built_images: bool = False
 
     @model_validator(mode="after")
     def validate_registry_names(self) -> "PublishConfig":
