@@ -70,8 +70,21 @@ runner-version risk still defers to the first reusable-riding unity leg), the mi
 canonicalized to `github-actions-toolkit` (the redirect had been masking the abandoned spelling).
 Fleet consequence, standing: every consumer that bumps its wrapper past d982657 before its
 cutover hits the same wall — wrapper bump and cutover stay one atomic step per repo (the sweep's
-plan already spells this). Open to land: operator push + PR + `ready-to-merge`; the `0.3` dev
-prerelease rides its own release.yml. Open carries, decisions pending: build-artifact-
+plan already spells this). The branch is pushed (rebased) as PR #8: every hosted job green, the
+unity compile leg red — root cause in build-artifact-registry 0.2, not the YAML: the split gave
+`builds.*` self-authentication (`ensure_registry_login` on entry) but left `cache.restore`/
+`cache.save` with none — they only ever worked via old ci-devkit `install_oras()`'s hardcoded
+`ensure_registry_login("ghcr.io")` side effect, so post-relock oras ran anonymous (restore read
+the denied HEAD as a miss, license activated, save's push failed loudly). Fix on
+build-artifact-registry branch `cache-self-auth`, battery green: cache restore and save
+authenticate through the neutral chain on entry (mirroring builds.py — same seam, same rule),
+and restore treats a registry refusal (denied/unauthorized/forbidden in the pull output) as a
+loud FATAL, never a miss — the distinction only becomes meaningful authenticated (anonymous
+ghcr answers "denied" to nonexistent packages too). Sequence: land it through its merge-gate
+(its release.yml then publishes a fresh 0.2.0.devN on the same unpromoted base — every
+`>=0.2.0.dev0` floor already admits it), relock unity-devkit, re-run PR #8; then operator
+`ready-to-merge`, and the `0.3` dev prerelease rides its own release.yml. Open carries,
+decisions pending: build-artifact-
 registry's own CI resolves 3.15 in the wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
 discovers the interpreter from the clone (the repo's own pin cannot reach it; `tools/devkit`
@@ -80,8 +93,11 @@ until the Phase 7 sweep). Candidates: wrapper bump to `d982657` (requires the me
 wake fix and `release-devkit.yaml` migration to `registry:`+`identity:` — the new loader
 hard-flips the old `registries:` spelling) vs job-level `python-version` pins on the
 setup-uv steps. Also: its origin remote still spells the ci-devkit SSH URL (redirects cover
-it; rename housekeeping is host-side), and `gh` is confirmed blind to Actions runs (401 —
-the App token's capability boundary, verified live).
+it; rename housekeeping is host-side). Correction of an earlier record: `gh` is NOT blind to
+Actions runs — the App token minted via `uv run --project /pulsar/scripts
+mint-github-app-token` reads run lists, views, and logs on the public repos; the prior
+session's "verified live" 401 was the ambient ghcr-scoped `GITHUB_TOKEN`, not the App's
+capability boundary.
 
 Fleet interpreter pins (CPython 3.15 drift incident): uv 0.11.x offers managed 3.15.0, and
 every repo with an unbounded `requires-python = ">=3.13"` let fresh runners resolve 3.15 —
