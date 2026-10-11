@@ -245,6 +245,25 @@ the tier relocks onto stables throughout; lbe-toolkit's operator prerequisites (
 trusted-publisher rows for the three `org.outernet.lbetoolkit*` names, evergreen-dev
 membership, merge-bot wiring) must be verified present before its PR is labeled.
 
+Session record (2026-10-11, devkit-tier close-out): docker-devkit verified done end to end
+(main promoted — main = dev, stable `docker-devkit 0.3.0` live on PyPI). unity-devkit's cutover
+PR #9 landed through its gate and the dev channel published `unity-devkit 0.3.0.dev227`, but the
+repo was never promoted (main sits 20 behind dev — operator step outstanding), and
+`org.outernet.playerbuild` published nothing on any channel. Diagnosis: playerbuild's declared
+path (`packages/unity/PlayerBuild/Assets/Package`) is unchanged since `playerbuild-v0.1.5` —
+phase 3 touched only the python verbs, the expunged self-test lived under `Assets/Editor`
+(outside the package path), and the `major_minor: "0.3"` bump rides the root config, which no
+package path covers — so pure path-diff gating skipped it. The same correlation hid the gap
+everywhere else: python packages always shipped on bump commits because those commits also
+touched the python package (the repo's payload). Operator doctrine ruling: a major_minor bump is
+itself a release — `compute_release_plan` now forces `publish` when a package's declared line
+sits above every existing tag; within the tagged line, patch flow stays path-diff-gated; apps
+keep their own any-package-published rule. The clause flows unchanged through every channel and
+`validate-release-plan` (159 tests, ruff, basedpyright green). Consequence: unity-devkit's
+promotion must repin its toolkit `uses:` past the fix SHA for playerbuild's `0.3.0` to ride the
+stable channel — its current pin `66df38b` computes the old gate; npm stays at `0.1.5` until
+then.
+
 Open carries, decisions pending: build-artifact-registry's own CI resolves 3.15 in the
 wrapper-driven jobs — its wrapper pins `029a9a6`, a
 pre-rearchitecture toolkit tip that predates the toolkit's 3.13 pin, and `uv run --project`
