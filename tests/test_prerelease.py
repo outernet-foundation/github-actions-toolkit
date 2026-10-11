@@ -185,9 +185,7 @@ def patch_publish_internals(monkeypatch: pytest.MonkeyPatch) -> tuple[FakePublis
     npm_registry = FakePublishRegistry()
     create_and_push_tag = CallRecorder()
     monkeypatch.setattr(release_module, "configure_git", noop)
-    monkeypatch.setattr(release_module, "install_dotnet", noop)
-    monkeypatch.setattr(release_module, "install_node", noop)
-    monkeypatch.setattr(release_module, "build_registries", FixedReturn({"npm": npm_registry}))
+    monkeypatch.setattr(release_module, "build_registries", FixedReturn({"pypi": npm_registry}))
     monkeypatch.setattr(release_module, "create_and_push_tag", create_and_push_tag)
     return npm_registry, create_and_push_tag
 
@@ -230,7 +228,7 @@ def test_noop_merge_publishes_nothing_but_writes_section(monkeypatch: pytest.Mon
 def test_only_packages_changed_publishes_and_appends_section(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(
         packages={
-            "pkg": PackageConfig(path=Path("packages/pkg"), major_minor="1.0", registry="npm", identity="pkg-id")
+            "pkg": PackageConfig(path=Path("packages/pkg"), major_minor="1.0", registry="pypi", identity="pkg-id")
         },
         apps={"myapp": make_app()},
     )
@@ -244,7 +242,7 @@ def test_only_packages_changed_publishes_and_appends_section(monkeypatch: pytest
     assert npm_registry.calls[0]["dev"] is True
     assert npm_registry.calls[0]["commit_count"] == COMMIT_COUNT
     dev_version = f"1.0.0-dev.{COMMIT_COUNT}"
-    assert f"| pkg | npm | [{dev_version}](https://registry.example/pkg-id/{dev_version}) |" in written[0]
+    assert f"| pkg | pypi | [{dev_version}](https://registry.example/pkg-id/{dev_version}) |" in written[0]
     assert create_and_push_tag.calls == []
     assert pull_artifact.calls != []
     assert written != []
@@ -347,11 +345,15 @@ def test_snapshot_section_lists_all_packages_with_dev_and_stable_versions(
 ) -> None:
     config = make_config(
         packages={
-            "fresh": PackageConfig(path=Path("packages/fresh"), major_minor="1.0", registry="npm", identity="fresh-id"),
-            "settled": PackageConfig(
-                path=Path("packages/settled"), major_minor="1.0", registry="npm", identity="settled-id"
+            "fresh": PackageConfig(
+                path=Path("packages/fresh"), major_minor="1.0", registry="pypi", identity="fresh-id"
             ),
-            "never": PackageConfig(path=Path("packages/never"), major_minor="1.0", registry="npm", identity="never-id"),
+            "settled": PackageConfig(
+                path=Path("packages/settled"), major_minor="1.0", registry="pypi", identity="settled-id"
+            ),
+            "never": PackageConfig(
+                path=Path("packages/never"), major_minor="1.0", registry="pypi", identity="never-id"
+            ),
         },
         apps={"myapp": make_app()},
     )
@@ -361,9 +363,9 @@ def test_snapshot_section_lists_all_packages_with_dev_and_stable_versions(
 
     assert len(written) == 1
     fresh_version = f"1.0.0-dev.{COMMIT_COUNT}"
-    assert f"| fresh | npm | [{fresh_version}](https://registry.example/fresh-id/{fresh_version}) |" in written[0]
-    assert "| settled | npm | [2.1.0](https://registry.example/settled-id/2.1.0) |" in written[0]
-    assert "| never | npm | 0.0.0 |" in written[0]
+    assert f"| fresh | pypi | [{fresh_version}](https://registry.example/fresh-id/{fresh_version}) |" in written[0]
+    assert "| settled | pypi | [2.1.0](https://registry.example/settled-id/2.1.0) |" in written[0]
+    assert "| never | pypi | 0.0.0 |" in written[0]
 
 
 def test_dev_version_spelling_per_registry() -> None:
@@ -389,7 +391,7 @@ def test_resolve_publish_versions_spells_co_publishing_siblings_with_the_run_cou
 def test_existing_dev_draft_viewed_once_per_run(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(
         packages={
-            "pkg": PackageConfig(path=Path("packages/pkg"), major_minor="1.0", registry="npm", identity="pkg-id")
+            "pkg": PackageConfig(path=Path("packages/pkg"), major_minor="1.0", registry="pypi", identity="pkg-id")
         },
         apps={"myapp": make_app()},
     )

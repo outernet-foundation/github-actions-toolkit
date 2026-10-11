@@ -86,11 +86,12 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
     if channel == ReleaseChannel.STABLE and not release_plan.publishing and not release_plan.app_versions:
         return
 
-    # Resolve the certified SHA for the channel
+    # Resolve the PR head SHA for the channel
     head = bash_output("git rev-parse HEAD").strip()
     sha = head if channel == ReleaseChannel.PR else bash_output(f"git log -1 --format=%P {head}").strip().split()[1]
     short_sha = sha[:12]
-    # Count commits at the certified head the app binaries stamped
+
+    # Count commits at the PR head the app binaries were stamped from
     commit_count = int(bash_output(f"git rev-list --count {sha}").strip()) if channel != ReleaseChannel.STABLE else 0
 
     # Lay out the release notes scaffolding
@@ -104,6 +105,7 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
             tag = f"pr-{re.findall(r'^refs/pull/(\d+)/merge$', settings.github_ref)[0]}"
             versions = {name: get_latest_version(f"{name}-v") for name in publish_config.apps}
             blocks.append(heading)
+
         case ReleaseChannel.DEV:
             tag = DEV_DRAFT_TAG
             versions = release_plan.app_last_versions
@@ -115,6 +117,7 @@ def create_or_update_release(config: Path, channel: ReleaseChannel) -> None:
                 f"{heading} — [PR #{pr_number}: {pr_title}]"
                 f"(https://github.com/{settings.github_repository}/pull/{pr_number})"
             )
+
         case ReleaseChannel.STABLE:
             year_month = datetime.now(UTC).strftime("%Y.%m")
             existing = bash_output(
@@ -217,10 +220,42 @@ def publish_packages(
 ) -> list[PackageRow]:
     # Provision the toolchains for the registries this run publishes to
     publishing_registries = {publish_config.packages[name].registry for name in release_plan.publishing}
+
     if "nuget" in publishing_registries:
-        install_dotnet(settings, "8.0")
+        # Install the .NET SDK through the vendored install script
+        dotnet_channel = "8.0"
+        print(f"Installing .NET SDK {dotnet_channel}")
+        script = Path(__file__).parent.parent / "third-party" / "dotnet-install.sh"
+        bash(f"bash {script} --channel {dotnet_channel}")
+
+        # Put dotnet on PATH for this process and the rest of the job
+        dotnet_path = str(Path.home() / ".dotnet")
+        os.environ["PATH"] = f"{dotnet_path}{os.pathsep}{os.environ['PATH']}"
+        if settings.github_path:
+            with open(settings.github_path, "a") as file:
+                file.write(f"{dotnet_path}\n")
+
     if "npm" in publishing_registries:
-        install_node("24", "https://registry.npmjs.org")
+        # Resolve the current linux-x64 tarball from the official shasums listing
+        node_version = "24"
+        print(f"Installing Node.js {node_version}")
+        shasums = bash_output(f"curl -fsSL https://nodejs.org/dist/latest-v{node_version}.x/SHASUMS256.txt")
+        match = re.search(r"(node-v[\d.]+-linux-x64\.tar\.xz)", shasums)
+        if not match:
+            raise SystemExit(f"Could not find Node.js v{node_version} linux-x64 binary")
+        filename = match.group(1)
+
+        # Unpack over /usr/local, dropping the runner's preinstalled npm
+        sudo_prefix = "sudo " if platform.system() == "Linux" and os.geteuid() != 0 else ""
+        bash(f"curl -fsSLO https://nodejs.org/dist/latest-v{node_version}.x/{filename}")
+        bash(f"{sudo_prefix}rm -rf /usr/local/lib/node_modules/npm")
+        bash(f"{sudo_prefix}tar -xJf {filename} -C /usr/local --strip-components=1")
+        Path(filename).unlink()
+
+        # Point npm at the public registry
+        (Path.home() / ".npmrc").write_text("registry=https://registry.npmjs.org\n")
+
+    # Build the registry adapters the package loop publishes through
     registries = build_registries(settings.nuget_api_key)
     dev = channel == ReleaseChannel.DEV
     rows: list[PackageRow] = []
@@ -275,8 +310,9 @@ def stage_apps(
     for app_name, artifact in [
         (app_name, artifact) for app_name, app in publish_config.apps.items() for artifact in app.builds
     ]:
-        layer = staging / f"{artifact.project}-{artifact.platform}"
         # Pull the artifact layer from the builds shelf
+        layer = staging / f"{artifact.project}-{artifact.platform}"
+
         pull_artifact(
             shelf,
             artifact.project,
@@ -394,33 +430,3 @@ def delete_draft_release(tag: str, repository: str) -> None:
 def configure_git(workspace: str) -> None:
     # Re-set safe.directory in the real HOME, where checkout only wrote a temporary one
     bash(f"git config --global --add safe.directory {shlex.quote(workspace)}")
-
-
-def install_dotnet(settings: Settings, channel: str) -> None:
-    print(f"Installing .NET SDK {channel}")
-    script = Path(__file__).parent.parent / "third-party" / "dotnet-install.sh"
-    bash(f"bash {script} --channel {channel}")
-    dotnet_path = str(Path.home() / ".dotnet")
-    os.environ["PATH"] = f"{dotnet_path}{os.pathsep}{os.environ['PATH']}"
-    if settings.github_path:
-        with open(settings.github_path, "a") as file:
-            file.write(f"{dotnet_path}\n")
-
-
-def install_node(version: str, registry_url: str | None = None) -> None:
-    system = platform.system()
-    sudo = system == "Linux" and os.geteuid() != 0
-
-    print(f"Installing Node.js {version}")
-    shasums = bash_output(f"curl -fsSL https://nodejs.org/dist/latest-v{version}.x/SHASUMS256.txt")
-    match = re.search(r"(node-v[\d.]+-linux-x64\.tar\.xz)", shasums)
-    if not match:
-        raise SystemExit(f"Could not find Node.js v{version} linux-x64 binary")
-    filename = match.group(1)
-    prefix = "sudo " if sudo else ""
-    bash(f"curl -fsSLO https://nodejs.org/dist/latest-v{version}.x/{filename}")
-    bash(f"{prefix}rm -rf /usr/local/lib/node_modules/npm")
-    bash(f"{prefix}tar -xJf {filename} -C /usr/local --strip-components=1")
-    Path(filename).unlink()
-    if registry_url:
-        (Path.home() / ".npmrc").write_text(f"registry={registry_url}\n")

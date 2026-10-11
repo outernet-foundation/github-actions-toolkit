@@ -101,8 +101,6 @@ def test_release_resets_dev_draft_after_create(monkeypatch: pytest.MonkeyPatch) 
     )
     patch_stable_context(monkeypatch, config)
     monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(release_plan))
-    monkeypatch.setattr(release_module, "install_dotnet", noop)
-    monkeypatch.setattr(release_module, "install_node", noop)
     monkeypatch.setattr(release_module, "create_and_push_tag", CallRecorder())
     monkeypatch.setattr(
         release_module, "pull_artifact", FakePullArtifact({("MyApp", "AndroidMobile"): {"MyApp.apk": "build content"}})
@@ -151,8 +149,6 @@ def test_release_tags_app_versions_before_publishing_notes(monkeypatch: pytest.M
     )
     patch_stable_context(monkeypatch, config)
     monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(release_plan))
-    monkeypatch.setattr(release_module, "install_dotnet", noop)
-    monkeypatch.setattr(release_module, "install_node", noop)
     tag_recorder = CallRecorder()
     monkeypatch.setattr(release_module, "create_and_push_tag", tag_recorder)
     monkeypatch.setattr(
