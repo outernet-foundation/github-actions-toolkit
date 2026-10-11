@@ -224,6 +224,34 @@ def test_release_plan_leaves_everything_unchanged_when_nothing_changed(
     assert release_plan.app_versions == {}
 
 
+def test_release_plan_publishes_a_declared_line_ahead_of_every_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    package_dir = tmp_path / "pkg"
+    package_dir.mkdir()
+    (package_dir / "package.json").write_text("{}", encoding="utf-8")
+    config = PublishConfig(
+        packages={"pkg": PackageConfig(path=Path("pkg"), major_minor="0.3", registry="npm", identity="pkg")}
+    )
+    patch_plan_tags(monkeypatch, FakeTagSource(versions={"pkg-v": ["0.1.5"]}, changed={"pkg": False}))
+
+    release_plan = compute_release_plan(config)
+
+    assert release_plan.publishing == {"pkg"}
+    assert release_plan.plans["pkg"].version == "0.3.0"
+
+
+def test_release_plan_keeps_an_unchanged_path_gated_within_the_tagged_line(
+    release_config: PublishConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_plan_tags(monkeypatch, FakeTagSource(versions={"pkg-v": ["0.1.4"]}, changed={"pkg": False}))
+
+    release_plan = compute_release_plan(release_config)
+
+    assert release_plan.publishing == set()
+
+
 def test_release_plan_bumps_app_on_its_own_path_change(
     release_config: PublishConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:

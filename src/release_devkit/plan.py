@@ -72,6 +72,10 @@ def compute_release_plan(publish_config: PublishConfig) -> ReleasePlan:
         last_version = get_latest_version(prefix)
         last_in_line = latest_version_in_line(prefix, package.major_minor)
         changed = has_changes_since(f"{prefix}{last_version}" if last_version else None, package.path)
+        # A declared line above every existing tag always ships: a major_minor bump is
+        # itself a release, even when the bump rode commits that never touched the path.
+        if last_version is not None and parse_version(last_version)[:2] < parse_major_minor(package.major_minor):
+            changed = True
         plans[name] = PackagePlan(
             name=name,
             publish=changed,
