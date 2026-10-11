@@ -1,7 +1,8 @@
 # Devkit rearchitecture — binding-layer consolidation, package split, fleet cutover
 
-Status: the execution plan for the remaining fleet cutover — the 8.3 placeframe leg plus the
-unswept Phase 7 nodes. Everything landed is described by the repos' AGENTS.md files and git
+Status: the execution plan for the remaining fleet cutover — the post-placeframe sweep queue
+(placeframe-capture-tool next) plus the unswept Phase 7 nodes. Everything landed is described by
+the repos' AGENTS.md files and git
 history; this file holds only what future sessions need: the remaining queue, the laws that
 govern it, and open carries. It consolidates and supersedes the earlier plan docs
 (release-devkit-finish, ci-refresh-seed, zizmor-audit — residue in `todo/supply-chain-control.md`
@@ -25,28 +26,38 @@ merge, the forced-publish clause, Phase 8.1 (hosted `runs-on` default, the
 `github_actions_toolkit` package rename, the `publish.yml` config flip, derived `built_images`,
 stale-spelling lint dropped), Phase 8.2 (docker-devkit 0.4: manifest candidates collapsed to
 `workloads/images.yml`+`images.lock`, mirror-prefix injection, fail-closed unmirrored probe),
-and the 8.3 resweep legs one through eight (build-artifact-registry, bashrun, python-devkit,
+and the 8.3 resweep legs one through nine (build-artifact-registry, bashrun, python-devkit,
 logger-conf, openapi-client-codegen, pydantic-settings-pulumi, unity-devkit, docker-devkit
 self — every `uses:` repinned, configs renamed to `publish.yml`, merged through their gates,
-promoted; channels silent by design — no package path touched). Current stable lines: bashrun
-0.8.0, build-artifact-registry 0.2.0, python-devkit 0.3.0, unity-devkit 0.3.0
-(`org.outernet.playerbuild` 0.3.0 on npm `latest`), docker-devkit 0.4.0, logger-conf 0.3.0,
-openapi-client-codegen 0.3.1, pydantic-settings-pulumi 0.3.0. The stray `bashrun 0.6.0` orphan
-stays on PyPI by ruling (untagged; version math is tag-driven and never references it).
+promoted; channels silent by design — no package path touched; placeframe ninth, where the
+channels were NOT silent by design — the 2.0 bump forced the publish, see below). Current
+stable lines: bashrun 0.8.0, build-artifact-registry 0.2.0, python-devkit 0.3.0,
+unity-devkit 0.3.0 (`org.outernet.playerbuild` 0.3.0 on npm `latest`), docker-devkit 0.4.1,
+logger-conf 0.3.0, openapi-client-codegen 0.3.1, pydantic-settings-pulumi 0.3.0. The stray
+`bashrun 0.6.0` orphan stays on PyPI by ruling (untagged; version math is tag-driven and never
+references it).
 
-placeframe: PR #136 (the toolkit cutover) merged into dev (`3c9924a8`). Operator follow-on in
-flight: branch `2.0` (`469897a2`, pushed — "Bump major minor to 2.0 for all packages"),
-superseding this plan's original +1-minor bump rows. Outstanding placeframe-side: the dev →
-main promotion (operator; the new lines publish at it — verify which lines the dev channel
-published at the merge versus what the 2.0 bump redefines, on the registries, before anything
-else), then the 8.3 leg: repin every `uses:` to the toolkit tip, relock onto docker-devkit 0.4,
-rewrite the 16 `x-base-images` refs upstream-native.
+placeframe: the 8.3 leg LANDED through PR #137 (operator ruling: the sweep rode the operator's
+`2.0` branch — the all-packages major_minor bump plus the sweep commits — landing before the
+promotion, not after it). Contents: every `uses:` repinned to `8e2b332`, `release-devkit.yaml`
+renamed `publish.yml` with `built_images` dropped (derived from `workloads/images.yml` presence
+at the tip), the 16 `x-base-images` refs flipped upstream-native (the lock regenerated
+byte-identical through docker-devkit 0.4's `build --lock-only` — crane-copy digest equality
+held), relock onto docker-devkit 0.4.1 with ruff held at 0.14.14, hatch-include hygiene,
+agent-doc updates. At the merge the dev channel published the first 2.0-line prereleases of
+all nine packages (`2.0.0-dev.1320` npm/nuget, `2.0.0.dev1320` PyPI — the bump forces publish
+on untouched paths; nuget's flatcontainer lagged the green run by several minutes — CDN
+propagation, not a skip). Outstanding placeframe-side: only the dev → main promotion
+(operator) — ships the stable 2.0.0 lines, cuts the CalVer release, resets `dev-builds`; after
+it, downstream relocks spell stable pins instead of dev prereleases. `publish-compose` stays
+local permanently (repo-side law, recorded in placeframe's workflows AGENTS.md).
 
-Remaining queue after placeframe: placeframe-capture-tool and lbe-toolkit (both gated on
-placeframe's new UPM line existing on the registry before they relock onto it), Make-it-Sing,
-then Nessle, ObserveThing, StatefulUnity last (straight to the Phase 8 grammar — `publish.yml`
-spelling, hosted runners by default; the destination org needs no runner story). Local clones
-lag where sessions left them — the operator pulls before each is touched.
+Remaining queue: placeframe-capture-tool next (its gate is satisfied — placeframe's new lines
+exist on the registries as 2.0.0-dev prereleases; stable spellings once the promotion lands),
+then lbe-toolkit (same gate, same spelling rule), Make-it-Sing, then Nessle, ObserveThing,
+StatefulUnity last (straight to the Phase 8 grammar — `publish.yml` spelling, hosted runners
+by default; the destination org needs no runner story). Local clones lag where sessions left
+them — the operator pulls before each is touched.
 
 ## Open carries and blockers
 
@@ -107,7 +118,10 @@ silently keep stale pins off a warm index cache); the sandbox's default `uv` (0.
 editing a workspace member's entry points, `uv sync` does NOT regenerate stale console-script
 wrappers when the member's version is unchanged — `uv sync --reinstall-package <pkg>`
 (fresh CI installs immune); `uvx --from <local-path>` serves a stale cached env through
-`--refresh-package` — only outer `--no-cache` forces the rebuild.
+`--refresh-package` — only outer `--no-cache` forces the rebuild; nuget.org's flatcontainer
+index and blob endpoints lag a green dev publish by several minutes — a 404 there right after
+a green release run is CDN propagation, not a missing publish (verified live at the placeframe
+2.0 merge: npm and PyPI listed within seconds, nuget took ~6 minutes).
 
 ## The model: two layers, one seam
 
@@ -220,15 +234,6 @@ flips and the 0.4 relock land in the same commit as the cutover.
 
 **Per-repo specifics (from reconnaissance; mechanics per the toolkit's AGENTS.md).**
 
-- **placeframe** (8.3 leg, after the promotion): repin every `uses:` to the tip; relock onto
-  docker-devkit 0.4; rewrite the 16 `x-base-images` refs upstream-native; `publish-compose`
-  stays local permanently; the repo preflight is the inlined `scripts/preflight.py` (battery,
-  image refs/couplings/DB/datamodels, generate-clients --check) with the calling job's
-  `packages: read` supplying the mirrored postgres. npm trusted-publisher rows for
-  `org.outernet.placeframe.apiclient` already exist (published under the old single-entry
-  flow); the filename binding (`release.yml`) is unchanged. Local residue: many `backup-pre-*`
-  branches; `even-more-ci-fixes` is redundant. First step regardless: pull the clone and
-  reconcile the in-flight `2.0` line state against the registries.
 - **placeframe-capture-tool**: cut over directly into the Phase 8 grammar — the inline
   `uv run build --mode ci` docker job dies for the canonical `build-docker.yml` call (brings
   `--push`, `REGISTRY` env, shelf shards, tree-tags); docker-devkit relock onto 0.4; its 7
