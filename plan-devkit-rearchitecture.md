@@ -598,6 +598,28 @@ placeframe-capture-tool cutover (Phase 7 sweep; per-repo specifics above: builds
 `update-pr-draft-release`, new-line UPM pins, supersede stale local branches). Toolkit dev
 carries this plan-record commit unpushed.
 
+Session record (2026-10-11, cross-org readiness + binding hardening — Phase 8 authored, no
+code landed): investigation across github-actions-toolkit and infra-github-org asked one
+question — how far the CI system (evergreen included) is from serving a distinct org
+(StatefulUnity today; Nessle and ObserveThing destined to join it; politically separate,
+umbrella-adjacent). Findings: the binding is org-free everywhere except the self-hosted
+unity runners — runner groups are org-scoped, and the fleet exists for Make-it-Sing alone
+(the one private repo, past hosted ~14 GB disk); every other repo is public, free on
+hosted. Docker image declarations spell the org 27 times across two files
+(mirror-prefixed `x-base-images` refs + `mirror.prefix` in docker-devkit.yaml) joined
+only by startswith, silent in both directions (off-prefix refs quietly unmirrored; a
+changed prefix reports "Mirrored images: 0" green). `built_images` had already drifted
+twice: capture-tool and Make-it-Sing build images in CI via pre-canonical inline jobs
+that never pass `--push`/`REGISTRY` — nothing shelved, nothing tree-tagged, invisible to
+release notes — and MiS is pinned to a docker-devkit whose build verb no longer parses
+`--mode ci` (`fc5bc25` replaced it). The decision set is Phase 8 below (operator rulings:
+the hosted default flips at landing with no validation step; the package and config
+renames; derived `built_images`; the stale-spelling lint dropped outright; mirror
+injection; the resweep folded into the standing sweep). The prior record's "next session
+opens at the placeframe-capture-tool cutover" is SUPERSEDED: Phase 8 is the very next
+work; the capture-tool node follows the resweep, cutting over directly into the Phase 8
+grammar. Phase 7's per-repo specifics are amended in place where superseded.
+
 Open carries, decisions pending: build-artifact-registry's wrapper-era 3.15 carry is RESOLVED
 — the cutover deleted the wrapper (its reusables pin `66df38b`, past the 3.13 pin), confirmed
 at the tier close. Still open: its origin remote still spells the ci-devkit SSH URL (redirects cover
@@ -878,23 +900,30 @@ placeframe, placeframe-capture-tool, then Make-it-Sing and lbe-toolkit (lbe-tool
 cross-repo edge consumes placeframe's UPM line, so placeframe must publish its new line
 before lbe-toolkit relocks onto it; Make-it-Sing rides the same tier by the same ruling;
 lbe-toolkit's operator prerequisites verified before its label), then Nessle, ObserveThing,
-StatefulUnity.
+StatefulUnity. Phase 8 (below) lands as the very next work: its resweep tier covers the
+already-swept consumers (placeframe's leg after PR #136's landing), and the remaining
+nodes above cut over directly into the Phase 8 grammar.
 
 **Per-repo specifics (from reconnaissance; mechanics re-aimed).** placeframe: 8×
-`registries:`→`registry:`+`identity:`, drop `ci_workflow:`, `built_images: true` confirmed,
+`registries:`→`registry:`+`identity:`, drop `ci_workflow:`, `built_images: true` confirmed
+(the key dies at Phase 8 — derived, never re-added),
 mirror-images precedes preflight (postgres FROM mirror-pinned base), `.github/workflows/
 AGENTS.md` documents the OLD contract — prose update is load-bearing, `cesium.yml`
 dispatch-only gets signature checks + wrapper-conformant checkouts; its in-flight
 `more-ci-fixes` branch (pin→ed406a0) folds or is superseded; placeframe additionally keeps
 `get-docker-matrix`-consuming local docker legs until Phase 4's matrix covers them, and
 `publish-compose` local permanently. Make-it-Sing: landing strategy ci-support-redux → new
-shape → green → merge-gate → evergreen `dev`; `built_images: true` confirmed
-(`build-livekit-token`); replace exact docker-devkit pin with `>=` floor; repo-local
-`build-livekit-token`/`build-docker` jobs fine. lbe-toolkit: build on ci-support-redux, 1.0→1.1
+shape → green → merge-gate → evergreen `dev`; the `built_images` key dies at Phase 8
+(derived, never re-added); replace exact docker-devkit pin with a `>=0.4` floor; the
+repo-local `build-livekit-token` job is superseded by Phase 8's canonical
+`build-docker.yml` call carrying the self-hosted `runs-on` override; its images.yml refs
+go upstream-native at the same relock. lbe-toolkit: build on ci-support-redux, 1.0→1.1
 all three packages, delete legacy `publish-config.json`, npm identities
 `org.outernet.lbetoolkit[.livekit|.photon]`, then retire old ci.yml/release.yml.
 placeframe-capture-tool: app `builds` dict→list, add `update-pr-draft-release`, adopt new-line
-UPM pins (verify consumed set), supersede stale local branches.
+UPM pins (verify consumed set), supersede stale local branches; its inline `--mode ci`
+docker job dies for the canonical `build-docker.yml` call and its refs go upstream-native
+(Phase 8).
 
 **pyproject hygiene, every repo, every in-tree pyproject.** Delete deptry
 `known_first_party` self-declarations (instance: placeframe `build/pyproject.toml`;
@@ -927,6 +956,102 @@ operator (closes the compromised-member workflow-edit path); fork-approval tier 
 contributors" on every public repo (fork workflow spellings never auto-run; also rations
 hosted-runner slop); org default workflow permissions read-only; "Allow GitHub Actions to
 create and approve pull requests" OFF.
+
+## Phase 8 — binding hardening: hosted-runner default, the two renames, derived
+built_images, mirror injection (2026-10-11 operator rulings; executes as the very next
+work, before the remaining Phase 7 nodes)
+
+Driver: cross-org readiness (see the session record above) plus the drift surfaces the
+same investigation caught. Order inside the phase is load-bearing: 8.1 (toolkit) lands and
+is pushed first — its fresh SHA is the resweep pin — then 8.2 (docker-devkit `0.4`), then
+8.3. Standing laws all apply (one repo one PR through its gate, promote to `main`, stable
+publish; the fresh-SHA law; prose and code in separate commits; `--refresh` on sweep
+relocks).
+
+### 8.1 github-actions-toolkit (one node, several commits)
+
+- `runs-on` becomes a string input on the fanout legs of `build-unity.yml` and
+  `compile-check-unity.yml`, default `ubuntu-latest` AT LANDING (operator ruling: flip
+  now, no validation step — hosted is known-good; public repos run free on hosted and the
+  self-hosted fleet exists for Make-it-Sing alone, the one private repo past hosted
+  disk). Getters and every other reusable stay fixed. Make-it-Sing spells
+  `with: runs-on: self-hosted,unity` at its cutover; every already-swept unity repo flips
+  to hosted atomically at its 8.3 repin. Side effects accepted, later sittings: the
+  runner-group roster shrinks toward MiS-only and the Hetzner fleet likely downsizes.
+- The Python package renames `release_devkit` → `github_actions_toolkit` — package
+  directory, all imports, pyproject name and package-data paths, script entry-point
+  module targets; console-script NAMES unchanged (public API); uv.lock regen.
+  Consumer-invisible: consumers invoke script names only. The external PyPI
+  `release-devkit` (StatefulUnity's legacy `uvx` pin) is a different artifact, untouched.
+- The consumer config renames `release-devkit.yaml` → `publish.yml` — hard flip at
+  `DEFAULT_CONFIG_PATH`, no accept-both. The org config-file law gains its one exception
+  sentence: the binding's consumer config is `publish.yml` (the workflow family's `.yml`
+  spelling). Every consumer renames in the same commit as its 8.3 repin.
+- `built_images` is deleted from `PublishConfig`; release derives the expectation from
+  the existence of `workloads/images.yml` at the repo root — a named contract with
+  docker-devkit in the leg-schema-keys class (post-8.2 exactly one candidate path). The
+  loud edge is preserved and re-keyed to the true declaration: manifest present + no
+  digest-manifest shards at a certified SHA = red release. The capture-tool/MiS "gaps"
+  dissolve here — they were never flag typos; their jobs never shelved (8.3 fixes that).
+- The stale-spelling lint is DROPPED entirely — `STALE_TOOLKIT_SPELLING`, its check, its
+  fixtures, the prose (operator ruling: the fleet is operator-owned, the migration bridge
+  is over, no replacement allowlist; the redirect's residual risk — org-internal name
+  reuse — is accepted). With it gone the rename sweep has zero in-repo survivors.
+- AGENTS.md revision rides as prose commits: the "two names survive the rename" ruling is
+  superseded by this phase; the `workloads/images.yml` contract and the `publish.yml`
+  flip are recorded at their homes.
+
+### 8.2 docker-devkit (`0.3` → `0.4`; the minor carries the grammar break)
+
+- The legacy manifest pair dies: `MANIFEST_CANDIDATES`/`LOCK_CANDIDATES`/
+  `MANIFEST_LOCK_PAIR` collapse to `workloads/images.yml` + `workloads/images.lock`; test
+  fixtures retarget to the real path (they were the legacy path's only live users); the
+  AGENTS bridge sentences drop.
+- Mirror prefix injection: `x-base-images` values become upstream-native; the
+  mirror-prefixed form is derived from `docker-devkit.yaml`'s `mirror.prefix`. `build`'s
+  lock loop drops the strip-prefix-to-inspect-upstream special case and writes
+  `{prefix}/{ref}@{digest}` — lock values byte-identical, zero lock churn, no
+  re-mirroring. The `mirror` verb's `is_mirrored`/`upstream_ref`/startswith matching
+  dies; targets are every declared ref (`crane copy {ref} {prefix}/{ref}`); the silent
+  `Mirrored images: 0` success mode dies with it. New loud edges: `x-base-images`
+  non-empty with no `mirror:` section = error; an already-prefixed ref = error (the
+  double-prefix guard). `up`'s `--pull-unmirrored` flag and branch are deleted —
+  unmirrored lock entries become unconstructible.
+
+### 8.3 Fleet resweep + the remaining Phase 7 nodes (folded to the Phase 8 grammar)
+
+- Resweep, already-swept consumers, one PR per repo through its gate, sweep order:
+  build-artifact-registry, bashrun, python-devkit, logger-conf,
+  openapi-client-codegen, pydantic-settings-pulumi, unity-devkit, docker-devkit (self),
+  placeframe — each: repin every `uses:` to the 8.1 SHA + `git mv release-devkit.yaml
+  publish.yml`, one commit. placeframe's leg lands only after PR #136's landing sequence
+  completes (unchanged) and additionally relocks onto docker-devkit `0.4` and rewrites
+  its 16 `x-base-images` refs upstream-native. The repin carries the hosted-runner flip
+  to the already-swept unity repos atomically.
+- The remaining Phase 7 nodes cut over directly to the Phase 8 grammar — no intermediate
+  `release-devkit.yaml` state, no flag. placeframe-capture-tool: the inline
+  `uv run build --mode ci` job dies for the canonical `build-docker.yml` call (brings
+  `--push`, `REGISTRY`, shelf shards, tree-tags); docker-devkit relock onto `0.4`; its 7
+  refs upstream-native; `builds` dict→list and `update-pr-draft-release` as already
+  specified. Make-it-Sing: canonical `build-docker.yml` replaces the repo-local
+  `build-livekit-token` job; `with: runs-on: self-hosted,unity` on its unity legs;
+  docker-devkit `>=0.4` floor replaces the exact poisoned pin; its 3 refs upstream-native;
+  verify how stale `livekit-token` on ghcr is at cutover. lbe-toolkit: unchanged except
+  the `publish.yml` spelling. Nessle, ObserveThing, StatefulUnity: cut over straight to
+  `publish.yml`, hosted runners by default — the destination org needs no runner story,
+  the cross-org outcome this phase exists for.
+
+### 8.4 Recorded end states (this session's deferrals, not this pass)
+
+The images.yml + docker-devkit.yaml consolidation — one subject one file; at the merge
+the toolkit's built_images derivation goes content-level (declares ≥1 buildable service)
+or takes an explicit marker, else lifecycle-only repos false-positive; the mirror prefix
+and built-image tag namespaces become owner-derivable the way the shelf derives from
+`GITHUB_REPOSITORY`. unityci/editor mirror entries for hosted pull speed — only if the
+hosted legs' multi-GB image pulls annoy. The org-move operational checklist (org
+vars/secrets, merge-bot App installation, rulesets, trusted-publisher rebinding on the
+package registries) — operator sittings, not code. Runner-group roster shrink and
+infra-github-runners downsizing — later sittings.
 
 ## Consumer end-state
 
@@ -1014,7 +1139,7 @@ actionlint + zizmor + the SHA law + the concurrency model checks:
 | Concern | Disposition |
 |---|---|
 | actionlint + zizmor layers | unchanged; devkit-owned files audited by the devkit's own self-lint; composite internals zizmor-covered at the devkit root, actionlint-blind (composites fail loudly on bad inputs instead) |
-| SHA pin law | **the core check**: every `uses:` ref to github-actions-toolkit (workflow or action) is a full 40-hex SHA; all refs to it in one repo carry the same SHA; the canonical repo name is enforced (GitHub's rename redirect must never mask a stale spelling); within-file YAML anchors on the `uses` scalar sanctioned |
+| SHA pin law | **the core check**: every `uses:` ref to github-actions-toolkit (workflow or action) is a full 40-hex SHA; all refs to it in one repo carry the same SHA; the stale-spelling detector was dropped by Phase 8 ruling (operator-owned fleet, the migration bridge is over, no replacement allowlist); within-file YAML anchors on the `uses` scalar sanctioned |
 | Inline-delivery law | **dropped** — no delivery reusable exists to forbid; violating requires authoring new machinery (a consumer-local reusable or a devkit-grown one), and the failure would surface at delivery time with a confusing OIDC error; cheap insurance judged not worth a check |
 | release.yml concurrency | `release-${{ github.ref }}`, no cancel — the delivery mutex: with no group, concurrent dev runs lose sections to the `dev-builds` read-modify-write race; with cancel, a mid-flight publish dies half-done and the cancelled merge's section is permanently lost (per-SHA snapshots are never rewritten) |
 | merge-gate wake shape | labeled-only wake, per-PR serializing group — the group closes the real race (two rapid pokes both read OPEN/green/rebased before either merges → double merge); the labeled-only trigger half guards gate availability (dead-gate detection); the workflow_run half is redundant with zizmor's dangerous-triggers audit and rides along free |
@@ -1032,6 +1157,12 @@ actionlint + zizmor + the SHA law + the concurrency model checks:
 - Hotfix release model — parked at `todo/hotfix-release-model.md`.
 - Fork-contribution model — parked at `todo/fork-contribution-model.md`.
 - Unity license and runner redesign — parked at `todo/unity-license-architecture.md`.
+- images.yml + docker-devkit.yaml consolidation — the recorded end state (Phase 8.4): one
+  subject one file; at the merge the toolkit's built_images derivation goes content-level
+  (declares ≥1 buildable service) or takes an explicit marker, and the mirror prefix and
+  built-image tag namespaces become owner-derivable (the cross-org portability answer).
+- unityci/editor mirror entries — only if the hosted unity legs' multi-GB image pulls
+  annoy.
 - Path-diff change-detection bug (build inputs outside a package's declared `path` are
   invisible) — parked at `todo/CRITICAL-BUG.md`.
 - Any change to release.yml's inline delivery model beyond the composite; any org-level
