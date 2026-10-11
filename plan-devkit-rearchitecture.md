@@ -746,6 +746,39 @@ gated on PR #136's landing sequence completing first (verify the per-repo `NUGET
 MERGE_BOT/evergreen-dev wiring before labeling; the ruff-0.17/python-devkit `9945222` blocker unchanged). Pull
 every touched clone before touching it.
 
+Session record (2026-10-11, Phase 8.3 resweep executed, placeframe excluded by operator): the
+bump question was answered before any edit — NO version bumps ride the resweep. The legs touch
+only workflow files (the `uses:` repin) and the root config filename, so no package path
+changes and no channel publishes anything (path-diff silent — expected, not a bug); consumer
+package APIs are untouched by 8.1 (its breaks are workflow/config grammar, consumer-side YAML
+only); every bump the architecture called for already landed in its own phase (unity 0.3,
+docker 0.4 at 8.2, the publishers' 0.3, bashrun 0.8, bar 0.2). The docker-devkit-0.4 relocks
+ride only placeframe/capture-tool/MiS legs, not these. All eight legs landed on local branch
+`toolkit-repin`: repin every `uses:` to `48250c4` + `git mv release-devkit.yaml publish.yml`,
+one code commit each (build-artifact-registry `4cb032c`, bashrun `8ff4e73`, python-devkit
+`aaa912d`, logger-conf `7846a7a`, openapi-client-codegen `fea029c`, pydantic-settings-pulumi
+`28dcfc5`, unity-devkit `6e2d50d`, docker-devkit `a9ff853`), with separate prose commits in the
+three repos whose AGENTS.md named the old filename (bashrun `2b4fcee` — also correcting the
+doubly-stale "keeps the release_devkit name" clause; python-devkit `5536860`; unity-devkit
+`327dba8`). Retired pins: `66df38b` (bar/python-devkit/docker-devkit), `8ac57f2` (bashrun),
+`c1f000c` (the three publishers), `63b580f` (unity-devkit) — zero old-SHA residue in any tree.
+Verified per repo: lint-workflows + validate-release-plan green against a worktree of the
+toolkit clone AT THE PIN `48250c4` (CI parity; the worktree removed after). Every clone was
+clean and current before branching (dev = origin/dev fleet-wide, origin/main = dev everywhere —
+the fleet fully promoted; stale local `main` refs are cosmetic). unity-devkit's repin carries
+the hosted-runner flip (its compile legs take the runs-on default — the fleet's first hosted
+unity legs; multi-GB editor pulls are the accepted later-sitting cost), and its stale merged
+`toolkit-repin` branch from PR #10 was deleted and the name reused. docker-devkit's own
+publish.yml carries no `x-base-images`/`mirror` keys (the 0.4 double-prefix guard cannot fire
+on itself); its unmerged residue branches (`sha-identity-pre-squash` backup, wrapper-era
+`update-release-devkit`) left in place, superseded. Handoff: the operator pushes each branch,
+opens the PR to dev, labels after CI certifies, merges, promotes dev → main — no wiring
+verification needed (all live from each repo's prior landing). Remaining 8.3 work after
+placeframe's own sequence (PR #136 landing first): placeframe's leg (+ docker-devkit 0.4
+relock + 16 `x-base-images` upstream-native), then placeframe-capture-tool and lbe-toolkit
+(both gated on placeframe's new UPM line existing on the registry), Make-it-Sing, Nessle,
+ObserveThing, StatefulUnity.
+
 Ruled out (do not re-propose without new information): an added composite-lint layer
 (bettermarks/composite-action-lint surveyed).
 
