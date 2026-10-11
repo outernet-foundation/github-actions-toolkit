@@ -466,7 +466,7 @@ jobs:
   update-pr-draft-release:
     needs: [build-unity, build-docker]
     permissions:
-      contents: read
+      contents: write
       packages: read
     uses: outernet-foundation/github-actions-toolkit/.github/workflows/update-pr-draft-release.yml@<sha>
 ```
