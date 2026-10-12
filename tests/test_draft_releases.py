@@ -137,12 +137,12 @@ def patch_pr_bash_output(monkeypatch: pytest.MonkeyPatch, body: str = "", api_ve
         if command.startswith("gh api /orgs/"):
             return api_versions
         if "--json assets" in command:
-            return json.dumps({
-                "assets": [
-                    {"name": name, "url": f"{DRAFT_URL}/{name}"}
-                    for name in (f"MyApp-AndroidMobile-{COMMIT_COUNT}.apk", f"MyApp-IOS-{COMMIT_COUNT}.apk")
-                ]
-            })
+            names = [
+                f"MyApp-AndroidMobile-{COMMIT_COUNT}.apk",
+                f"MyApp-IOS-{COMMIT_COUNT}.apk",
+                f"MyApp-AndroidMobile-{COMMIT_COUNT - 1}.apk",
+            ]
+            return json.dumps({"assets": [{"name": name, "url": f"{DRAFT_URL}/{name}"} for name in names]})
         return json.dumps({"body": body})
 
     monkeypatch.setattr(release_module, "bash_output", dispatching_bash_output)
@@ -205,7 +205,10 @@ def test_update_pr_draft_derives_pr_tag_and_uploads(monkeypatch: pytest.MonkeyPa
     assert any("pr-107" in command for command in bash_log.commands)
     assert any("gh release upload pr-107" in command and "--clobber" in command for command in bash_log.commands)
     assert any(f"MyApp-AndroidMobile-{COMMIT_COUNT}.apk" in command for command in bash_log.commands)
-    assert any("gh release edit pr-107" in command and "--notes-file" in command for command in bash_log.commands)
+    assert any(
+        "gh release edit pr-107" in command and "--tag pr-107" in command and "--notes-file" in command
+        for command in bash_log.commands
+    )
 
 
 def test_update_pr_draft_writes_image_section_when_manifest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -442,6 +445,31 @@ def test_update_pr_draft_replaces_same_anchor_and_preserves_others(monkeypatch: 
     assert "### Old" in written[0]
     assert f"### Commit [{SHORT_SHA}]" in written[0]
     assert "### New v1" not in written[0]
+
+
+def test_update_pr_draft_relinks_retired_asset_addresses(monkeypatch: pytest.MonkeyPatch) -> None:
+    stale_key = "untagged-e3d837de6eb911b634ef"
+    previous = COMMIT_COUNT - 1
+    stale_link = f"MyApp-AndroidMobile-{previous}.apk"
+    body = (
+        f'<a id="sha-old"></a>\n### Old\n\n| myapp | AndroidMobile | [1.0.0]'
+        f"(https://github.com/owner/repo/releases/download/{stale_key}/{stale_link}) |\n\n"
+        f'<a id="sha-older"></a>\n### Older\n\n| myapp | AndroidMobile | [0.9.0]'
+        f"(https://github.com/owner/repo/releases/download/pr-107/{stale_link}) |"
+    )
+    patch_context(monkeypatch, make_build_config())
+    patch_plan_tags(monkeypatch, FakeTags(versions={"myapp": "1.0.0"}, changed={"myapp"}))
+    patch_pull_artifact(monkeypatch, {("MyApp", "AndroidMobile"): {"MyApp.apk": "build content"}})
+    patch_pr_bash_output(monkeypatch, body)
+    patch_bash(monkeypatch, check_returns=True)
+    written = capturing_bash(monkeypatch)
+
+    release_module.main(channel=ReleaseChannel.PR)
+
+    assert written
+    assert written[0].count(f"({DRAFT_URL}/{stale_link})") == 2
+    assert stale_key not in written[0]
+    assert "releases/download/pr-107/" not in written[0]
 
 
 def test_update_pr_draft_lists_one_row_per_staged_artifact(monkeypatch: pytest.MonkeyPatch) -> None:

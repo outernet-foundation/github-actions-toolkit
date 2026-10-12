@@ -177,6 +177,7 @@ def test_release_tags_app_versions_before_publishing_notes(monkeypatch: pytest.M
     assert tag_recorder.calls == [("myapp-v1.1.0",)]
     assert edit_commands
     assert any("--draft=false" in command for command in edit_commands)
+    assert any("--tag" in command and "--notes-file" in command for command in edit_commands)
 
 
 def test_release_stops_when_nothing_to_ship(monkeypatch: pytest.MonkeyPatch) -> None:

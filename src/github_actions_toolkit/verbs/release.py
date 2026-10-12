@@ -169,7 +169,14 @@ def main(
         bash(f"gh release edit {tag} --draft=false --repo {repository}")
 
     if assets:
-        download_urls = asset_download_urls(tag, repository)
+        served_assets = json.loads(bash_output(f"gh release view {tag} --repo {repository} --json assets"))["assets"]
+        download_urls = {asset["name"]: asset["url"] for asset in served_assets}
+        # Older sections' links may point at asset addresses GitHub has retired
+        for asset_name, url in download_urls.items():
+            stale_link = (
+                rf"\(https://github\.com/{re.escape(repository)}/releases/download/[^/)]+/{re.escape(asset_name)}\)"
+            )
+            body = re.sub(stale_link, f"({url})", body)
         assets_rows = [
             [app_name, platform, f"[{versions.get(app_name) or '—'}]({download_urls[path.name]})"]
             for app_name, platform, path in assets
@@ -216,7 +223,7 @@ def main(
         notes_path = file.name
 
     try:
-        bash(f"gh release edit {tag} --repo {repository} --notes-file {notes_path}")
+        bash(f"gh release edit {tag} --tag {tag} --repo {repository} --notes-file {notes_path}")
     finally:
         Path(notes_path).unlink()
 
@@ -357,11 +364,6 @@ def stage_apps(
     bash(f"gh release upload {tag} {' '.join(f'"{path}"' for _, _, path in staged)} --clobber --repo {repository}")
 
     return staged
-
-
-def asset_download_urls(tag: str, repository: str) -> dict[str, str]:
-    assets = json.loads(bash_output(f"gh release view {tag} --repo {repository} --json assets"))["assets"]
-    return {asset["name"]: asset["url"] for asset in assets}
 
 
 def pull_digest_manifest(settings: Settings, shelf: str, sha: str) -> dict[str, DigestEntry]:

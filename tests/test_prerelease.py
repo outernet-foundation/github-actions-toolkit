@@ -168,6 +168,7 @@ def patch_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig, draft_
                 for app in config.apps.values()
                 for artifact in app.builds or []
             ]
+            names.append(f"MyApp-AndroidMobile-{COMMIT_COUNT - 1}.apk")
             return json.dumps({"assets": [{"name": name, "url": f"{DRAFT_URL}/{name}"} for name in names]})
         return json.dumps({"body": draft_body, "url": DRAFT_URL})
 
@@ -394,6 +395,34 @@ def test_resolve_publish_versions_spells_co_publishing_siblings_with_the_run_cou
     assert dependency_versions == {"co-id": "1.2.0.dev1563", "settled-id": "2.0.0"}
 
 
+def test_dev_run_relinks_retired_asset_addresses(monkeypatch: pytest.MonkeyPatch) -> None:
+    stale_key = "untagged-e3d837de6eb911b634ef"
+    stale_name = f"MyApp-AndroidMobile-{COMMIT_COUNT - 1}.apk"
+    draft_body = (
+        f'<a id="sha-old"></a>\n#### Apps\n| myapp | AndroidMobile | [1.0.0]'
+        f"(https://github.com/owner/repo/releases/download/{stale_key}/{stale_name}) |"
+    )
+    config = make_config(apps={"myapp": make_app()})
+    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
+    patch_plan_tags(monkeypatch, FakeTags(versions={"myapp": "1.0.0"}, changed=set()))
+    patch_context(monkeypatch, config, draft_body)
+    monkeypatch.setattr(release_module, "bash_check", FixedReturn(True))
+    written: list[str] = []
+
+    def capturing_bash(command: str) -> None:
+        if "--notes-file" in command:
+            path = command.split("--notes-file", 1)[1].strip().split()[0]
+            written.append(Path(path).read_text(encoding="utf-8"))
+
+    monkeypatch.setattr(release_module, "bash", capturing_bash)
+
+    release_module.main(channel=ReleaseChannel.DEV)
+
+    assert len(written) == 1
+    assert f"({DRAFT_URL}/{stale_name})" in written[0]
+    assert stale_key not in written[0]
+
+
 def test_existing_dev_draft_viewed_once_per_run(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(
         packages={
@@ -435,7 +464,8 @@ def test_existing_dev_draft_viewed_once_per_run(monkeypatch: pytest.MonkeyPatch)
         raise AssertionError(f"unexpected command {command}")
 
     monkeypatch.setattr(release_module, "bash_output", counting_bash_output)
-    monkeypatch.setattr(release_module, "bash", CallRecorder())
+    bash_recorder = CallRecorder()
+    monkeypatch.setattr(release_module, "bash", bash_recorder)
 
     release_module.main(channel=ReleaseChannel.DEV)
 
@@ -443,6 +473,13 @@ def test_existing_dev_draft_viewed_once_per_run(monkeypatch: pytest.MonkeyPatch)
         f"gh release view {DEV_DRAFT_TAG} --repo owner/repo --json body",
         f"gh release view {DEV_DRAFT_TAG} --repo owner/repo --json assets",
     ]
+    assert any(
+        isinstance(command[0], str)
+        and command[0].startswith(
+            f"gh release edit {DEV_DRAFT_TAG} --tag {DEV_DRAFT_TAG} --repo owner/repo --notes-file"
+        )
+        for command in bash_recorder.calls
+    )
 
 
 def run_merge_identity(monkeypatch: pytest.MonkeyPatch, parents_output: str) -> FakePullArtifact:
