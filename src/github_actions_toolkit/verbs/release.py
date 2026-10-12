@@ -159,14 +159,19 @@ def main(
 
     # Stage every app's build artifacts as release assets
     shelf = f"ghcr.io/{repository}/builds"
+    assets: list[StagedAsset] = []
     if publish_config.apps:
         assets = stage_apps(settings, publish_config, shelf, release_plan, channel, sha, commit_count, tag, repository)
+
+    # Publish the stable release before asset URLs are resolved: draft assets
+    # serve under the untagged- spelling, which dies at publication
+    if channel == ReleaseChannel.STABLE:
+        bash(f"gh release edit {tag} --draft=false --repo {repository}")
+
+    if assets:
+        download_urls = asset_download_urls(tag, repository)
         assets_rows = [
-            [
-                app_name,
-                platform,
-                f"[{versions.get(app_name) or '—'}](https://github.com/{repository}/releases/download/{tag}/{path.name})",
-            ]
+            [app_name, platform, f"[{versions.get(app_name) or '—'}]({download_urls[path.name]})"]
             for app_name, platform, path in assets
         ]
         blocks.append(f"{prefix} Apps\n{markdown_table(['App', 'Platform', 'Version'], assets_rows)}")
@@ -211,10 +216,7 @@ def main(
         notes_path = file.name
 
     try:
-        bash(
-            f"gh release edit {tag}{' --draft=false' if channel == ReleaseChannel.STABLE else ''}"
-            f" --repo {repository} --notes-file {notes_path}"
-        )
+        bash(f"gh release edit {tag} --repo {repository} --notes-file {notes_path}")
     finally:
         Path(notes_path).unlink()
 
@@ -355,6 +357,11 @@ def stage_apps(
     bash(f"gh release upload {tag} {' '.join(f'"{path}"' for _, _, path in staged)} --clobber --repo {repository}")
 
     return staged
+
+
+def asset_download_urls(tag: str, repository: str) -> dict[str, str]:
+    assets = json.loads(bash_output(f"gh release view {tag} --repo {repository} --json assets"))["assets"]
+    return {asset["name"]: asset["url"] for asset in assets}
 
 
 def pull_digest_manifest(settings: Settings, shelf: str, sha: str) -> dict[str, DigestEntry]:

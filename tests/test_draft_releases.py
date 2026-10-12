@@ -136,6 +136,13 @@ def patch_pr_bash_output(monkeypatch: pytest.MonkeyPatch, body: str = "", api_ve
             return str(COMMIT_COUNT)
         if command.startswith("gh api /orgs/"):
             return api_versions
+        if "--json assets" in command:
+            return json.dumps({
+                "assets": [
+                    {"name": name, "url": f"{DRAFT_URL}/{name}"}
+                    for name in (f"MyApp-AndroidMobile-{COMMIT_COUNT}.apk", f"MyApp-IOS-{COMMIT_COUNT}.apk")
+                ]
+            })
         return json.dumps({"body": body})
 
     monkeypatch.setattr(release_module, "bash_output", dispatching_bash_output)
@@ -466,11 +473,6 @@ def test_update_pr_draft_lists_one_row_per_staged_artifact(monkeypatch: pytest.M
     release_module.main(channel=ReleaseChannel.PR)
 
     assert written
-    assert (
-        f"| myapp | AndroidMobile | [1.0.0]"
-        f"(https://github.com/owner/repo/releases/download/pr-107/MyApp-AndroidMobile-{COMMIT_COUNT}.apk) |"
-    ) in written[0]
-    assert (
-        f"| myapp | IOS | [1.0.0]"
-        f"(https://github.com/owner/repo/releases/download/pr-107/MyApp-IOS-{COMMIT_COUNT}.apk) |"
-    ) in written[0]
+    assert (f"| myapp | AndroidMobile | [1.0.0]({DRAFT_URL}/MyApp-AndroidMobile-{COMMIT_COUNT}.apk) |") in written[0]
+    assert (f"| myapp | IOS | [1.0.0]({DRAFT_URL}/MyApp-IOS-{COMMIT_COUNT}.apk) |") in written[0]
+    assert "releases/download/pr-107/" not in written[0]

@@ -22,7 +22,8 @@ MERGE_SHA = "654321abcdef0987654321abcdef0987654321"
 CERTIFIED_SHA = "abcdef1234567890abcdef1234567890abcdef12"
 SHORT_SHA = CERTIFIED_SHA[:12]
 COMMIT_COUNT = 1563
-DRAFT_VIEW_JSON = json.dumps({"body": "", "url": "https://github.com/owner/repo/releases/untagged-abc"})
+DRAFT_URL = "https://github.com/owner/repo/releases/untagged-abc"
+DRAFT_VIEW_JSON = json.dumps({"body": "", "url": DRAFT_URL})
 
 
 class FixedReturn:
@@ -161,7 +162,14 @@ def patch_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig, draft_
             return "Merge PR #7: Add the thing\n"
         if command.startswith("gh api /orgs/"):
             return "[]"
-        return json.dumps({"body": draft_body, "url": "https://github.com/owner/repo/releases/untagged-abc"})
+        if "--json assets" in command:
+            names = [
+                f"{Path(artifact.file).stem}-{COMMIT_COUNT}{Path(artifact.file).suffix}"
+                for app in config.apps.values()
+                for artifact in app.builds or []
+            ]
+            return json.dumps({"assets": [{"name": name, "url": f"{DRAFT_URL}/{name}"} for name in names]})
+        return json.dumps({"body": draft_body, "url": DRAFT_URL})
 
     monkeypatch.setattr(release_module, "bash_output", dispatching_bash_output)
     layers = {
@@ -269,10 +277,9 @@ def test_only_apps_changed_surfaces_draft_but_skips_publish(monkeypatch: pytest.
     assert len(written) == 1
     assert "#### Apps" in written[0]
     assert "| App | Platform | Version |" in written[0]
-    fresh_link = (
-        f"https://github.com/owner/repo/releases/download/{DEV_DRAFT_TAG}/MyApp-AndroidMobile-{COMMIT_COUNT}.apk"
-    )
+    fresh_link = f"{DRAFT_URL}/MyApp-AndroidMobile-{COMMIT_COUNT}.apk"
     assert f"| myapp | AndroidMobile | [1.0.0]({fresh_link}) |" in written[0]
+    assert f"releases/download/{DEV_DRAFT_TAG}/" not in written[0]
 
 
 def test_stages_all_apps_regardless_of_source_changes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -412,6 +419,16 @@ def test_existing_dev_draft_viewed_once_per_run(monkeypatch: pytest.MonkeyPatch)
             return f"{MERGE_SHA} {CERTIFIED_SHA}\n"
         if command.startswith("git log"):
             return "Merge PR #7: Add the thing\n"
+        if "--json assets" in command:
+            view_calls.append(command)
+            return json.dumps({
+                "assets": [
+                    {
+                        "name": f"MyApp-AndroidMobile-{COMMIT_COUNT}.apk",
+                        "url": DRAFT_URL + f"/MyApp-AndroidMobile-{COMMIT_COUNT}.apk",
+                    }
+                ]
+            })
         if command.startswith("gh release view"):
             view_calls.append(command)
             return DRAFT_VIEW_JSON
@@ -422,7 +439,10 @@ def test_existing_dev_draft_viewed_once_per_run(monkeypatch: pytest.MonkeyPatch)
 
     release_module.main(channel=ReleaseChannel.DEV)
 
-    assert view_calls == [f"gh release view {DEV_DRAFT_TAG} --repo owner/repo --json body"]
+    assert view_calls == [
+        f"gh release view {DEV_DRAFT_TAG} --repo owner/repo --json body",
+        f"gh release view {DEV_DRAFT_TAG} --repo owner/repo --json assets",
+    ]
 
 
 def run_merge_identity(monkeypatch: pytest.MonkeyPatch, parents_output: str) -> FakePullArtifact:

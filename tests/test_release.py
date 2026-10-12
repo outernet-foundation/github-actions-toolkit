@@ -76,6 +76,16 @@ def patch_stable_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig)
             return f"{HEAD_SHA} {CERTIFIED_SHA}\n"
         if command.startswith("gh release list"):
             return "0"
+        if "--json assets" in command:
+            release_tag = f"{datetime.now(UTC).strftime('%Y.%m')}.1"
+            return json.dumps({
+                "assets": [
+                    {
+                        "name": "MyApp-AndroidMobile.apk",
+                        "url": f"https://github.com/owner/repo/releases/download/{release_tag}/MyApp-AndroidMobile.apk",
+                    }
+                ]
+            })
         return json.dumps({"body": "", "url": "https://github.com/owner/repo/releases/untagged-abc"})
 
     monkeypatch.setattr(release_module, "bash_output", dispatching_bash_output)
