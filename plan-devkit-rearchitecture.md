@@ -255,6 +255,31 @@ relocks. The docker-devkit-0.4 double-prefix guard makes a pre-flip mirror-prefi
 `x-base-images` ref a LOUD error — the atomic-cutover pressure is by design; upstream-native
 flips and the 0.4 relock land in the same commit as the cutover.
 
+**Reference regimes for the five (operator ruling 2026-10-11).** Minimal-invasive: inter-repo
+dependency references among the five cutover repos (lbe-toolkit, Make-it-Sing, Nessle,
+ObserveThing, StatefulUnity) stay verbatim at their origin/dev spellings, except the enumerated
+necessary adjustments — Nessle's and StatefulUnity's project manifests flip
+`com.fofx.observething` to a git SHA pin at ObserveThing's tip (`957c7b6`, path
+`Assets/Package/Core`), because their tips call APIs absent from every published observething
+line (the generic observer interfaces; `ObservableShallowCopy`/`ObservableForEach`). Published
+`package.json` edges among the five never flip to git (UPM does not resolve git URLs as
+indirect deps) — they ship their existing registry spellings verbatim, accepting temporarily
+incoherent floors for registry consumers until the trio republishes. Any other forced change
+to an inter-five reference aborts that repo's cutover with evidence. No other repo needs
+adjustment: Make-it-Sing's trio refs already resolve to compiling content (nessle git-SHA
+`68e19b1`; observething/stateful moving git URLs landing on main tips `f786746` ⊇ `957c7b6`
+and `c08203a`), and lbe's registry trio pins compile (its code uses no tip-only APIs).
+Application code changes ONLY where an external package at registry-latest demands it:
+playerbuild `0.3.0`'s flat `Outernet` namespace (Make-it-Sing's two `66697f3` editor files —
+verified at tag `playerbuild-v0.3.0`), placeframe 2.0's `ARFoundationCameraProvider` rename,
+livekit-sdk 2.0's `TaskYieldInstruction` await shape. Every reference from the five to a repo
+outside the five is a package-registry pin at that package's actual latest published version,
+verified per name on npm: placeframe UPM at `2.0.0-dev.1324` until the dev→main promotion
+(re-spell to `2.0.0` rides the landing; apiclient may lag on the 1.0.6-dev line — pin actual
+latest), playerbuild `0.3.0`, livekit-sdk `2.0.0`. The toolkit `uses:` SHA and the uv.lock
+toolchain pins are not dependency references; their own laws stand. Cutover order is fully
+independent.
+
 **Per-repo specifics (from reconnaissance; mechanics per the toolkit's AGENTS.md).**
 
 - **Make-it-Sing**: the canonical `build-docker.yml` call replaces the repo-local
