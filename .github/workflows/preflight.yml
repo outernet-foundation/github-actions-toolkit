@@ -2,6 +2,11 @@ name: Preflight
 
 on:
   workflow_call:
+    inputs:
+      consumer-script:
+        description: Run the consumer's scripts/preflight.py (false for repos with no Python)
+        type: boolean
+        default: true
 
 jobs:
   preflight:
@@ -19,5 +24,6 @@ jobs:
       - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev lint-workflows
       - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev validate-release-plan
       - run: uv run --locked scripts/preflight.py
+        if: inputs.consumer-script
         env:
           GITHUB_TOKEN: ${{ github.token }}
