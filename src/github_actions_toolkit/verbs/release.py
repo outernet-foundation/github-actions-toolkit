@@ -6,10 +6,10 @@ import platform
 import re
 import shlex
 import shutil
-from subprocess import CalledProcessError
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from subprocess import CalledProcessError
 from tempfile import NamedTemporaryFile, mkdtemp
 from typing import Annotated, NamedTuple, Self
 
@@ -33,8 +33,8 @@ from github_actions_toolkit.plan import (
     get_latest_version,
 )
 from github_actions_toolkit.publishing import build_registries
+from github_actions_toolkit.releases import delete_releases_by_prefix
 
-DEV_DRAFT_TAG = "dev-builds"
 DIGEST_PROJECT = "images-digests"
 DIGEST_PLATFORM = "all"
 DIGEST_FILE_NAME = "images-digests.json"
@@ -76,7 +76,9 @@ app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 
 @app.command()
 def main(
-    channel: Annotated[ReleaseChannel, typer.Option(help="Delivery channel: pr draft, dev prerelease, stable release")],
+    channel: Annotated[
+        ReleaseChannel, typer.Option(help="Delivery channel: pr/dev per-run prerelease, stable release")
+    ],
     config: Annotated[Path, typer.Option(help="Publish configuration YAML")] = DEFAULT_CONFIG_PATH,
 ) -> None:
     # Read the runner settings and the publish config
@@ -90,9 +92,17 @@ def main(
     # Publish every changed package to its registry and tag the stable versions
     release_plan = compute_release_plan(publish_config)
 
-    # Stop a stable run with nothing to ship
-    if channel == ReleaseChannel.STABLE and not release_plan.publishing and not release_plan.app_versions:
-        return
+    # Stop a run with nothing to ship, before creating anything
+    match channel:
+        case ReleaseChannel.PR:
+            if not publish_config.apps and not IMAGE_MANIFEST_PATH.is_file():
+                return
+        case ReleaseChannel.DEV:
+            if not release_plan.publishing and not publish_config.apps and not IMAGE_MANIFEST_PATH.is_file():
+                return
+        case ReleaseChannel.STABLE:
+            if not release_plan.publishing and not release_plan.app_versions:
+                return
 
     # Resolve the PR head SHA for the channel
     head = bash_output("git rev-parse HEAD").strip()
@@ -104,23 +114,25 @@ def main(
 
     # Lay out the release notes scaffolding
     heading = f"### Commit [{short_sha}](https://github.com/{settings.github_repository}/commit/{sha})"
-    prefix = "#" * (2 if channel == ReleaseChannel.STABLE else 4)
     blocks: list[str] = []
 
-    # Compose the channel's tag, versions, and header
+    # Compose the channel's tag, title, versions, and header
     match channel:
         case ReleaseChannel.PR:
-            tag = f"pr-{re.findall(r'^refs/pull/(\d+)/merge$', settings.github_ref)[0]}"
+            pr_number = re.findall(r"^refs/pull/(\d+)/merge$", settings.github_ref)[0]
+            tag = f"pr-{pr_number}-{commit_count}"
+            title = f"PR #{pr_number} · {short_sha} · build {commit_count}"
             versions = {name: get_latest_version(f"{name}-v") for name in publish_config.apps}
             blocks.append(heading)
 
         case ReleaseChannel.DEV:
-            tag = DEV_DRAFT_TAG
+            tag = f"dev-{commit_count}"
             versions = release_plan.app_last_versions
 
             pr_number, pr_title = re.findall(
                 r"Merge PR #(\d+): (.+)", bash_output(f"git log -1 --format=%B {head}").strip()
             )[0]
+            title = f"PR #{pr_number}: {pr_title} · build {commit_count}"
             blocks.append(
                 f"{heading} — [PR #{pr_number}: {pr_title}]"
                 f"(https://github.com/{settings.github_repository}/pull/{pr_number})"
@@ -133,20 +145,26 @@ def main(
                 f" --jq '[.[].tagName] | map(select(startswith(\"{year_month}\"))) | length'"
             ).strip()
             tag = f"{year_month}.{(int(existing) if existing else 0) + 1}"
-
+            title = tag
             versions = {**release_plan.app_last_versions, **release_plan.app_versions}
-
             blocks.append(heading)
 
     repository = settings.github_repository
 
-    # Ensure a draft release exists and read its current body
+    # A published release at this tag is a re-run of the same run: notes rewrite only.
+    # A leftover draft is a botched prior run: drafts are disposable, start over
     view_command = f"gh release view {tag} --repo {repository}"
-    body = ""
+    rerun = False
     if bash_check(view_command):
-        body = json.loads(bash_output(f"{view_command} --json body"))["body"]
-    else:
-        bash(f"gh release create {tag} --draft --target {head} --title {tag} --notes '' --repo {repository}")
+        if json.loads(bash_output(f"{view_command} --json isDraft"))["isDraft"]:
+            bash(f"gh release delete {tag} --yes --repo {repository}")
+        else:
+            rerun = True
+    if not rerun:
+        bash(
+            f"gh release create {tag} --draft --target {head} --title {shlex.quote(title)}"
+            f" --notes '' --repo {repository}"
+        )
 
     # Publish the changed packages and tag the stable versions
     if channel in (ReleaseChannel.DEV, ReleaseChannel.STABLE):
@@ -155,33 +173,35 @@ def main(
             packages_rows = [
                 [name, registry, f"[{version}]({url})" if url else version] for name, version, registry, url in packages
             ]
-            blocks.append(f"{prefix} Packages\n{markdown_table(['Package', 'Registry', 'Version'], packages_rows)}")
+            blocks.append(f"## Packages\n{markdown_table(['Package', 'Registry', 'Version'], packages_rows)}")
 
-    # Stage every app's build artifacts as release assets
+    # Stage every app's build artifacts as release assets on the draft
     shelf = f"ghcr.io/{repository}/builds"
-    assets: list[StagedAsset] = []
+    if not rerun and publish_config.apps:
+        stage_apps(settings, publish_config, shelf, release_plan, channel, sha, commit_count, tag, repository)
+
+    # Publish the release so its assets take their stable tag-form addresses
+    if not rerun:
+        if channel in (ReleaseChannel.PR, ReleaseChannel.DEV):
+            bash(f"gh release edit {tag} --draft=false --prerelease --repo {repository}")
+        else:
+            bash(f"gh release edit {tag} --draft=false --repo {repository}")
+
+    # Read back the served asset URLs from the published release
+    download_urls: dict[str, str] = {}
     if publish_config.apps:
-        assets = stage_apps(settings, publish_config, shelf, release_plan, channel, sha, commit_count, tag, repository)
-
-    # Publish the stable release before asset URLs are resolved: draft assets
-    # serve under the untagged- spelling, which dies at publication
-    if channel == ReleaseChannel.STABLE:
-        bash(f"gh release edit {tag} --draft=false --repo {repository}")
-
-    if assets:
-        served_assets = json.loads(bash_output(f"gh release view {tag} --repo {repository} --json assets"))["assets"]
+        served_assets = json.loads(bash_output(f"{view_command} --json assets"))["assets"]
         download_urls = {asset["name"]: asset["url"] for asset in served_assets}
-        # Older sections' links may point at asset addresses GitHub has retired
-        for asset_name, url in download_urls.items():
-            stale_link = (
-                rf"\(https://github\.com/{re.escape(repository)}/releases/download/[^/)]+/{re.escape(asset_name)}\)"
-            )
-            body = re.sub(stale_link, f"({url})", body)
         assets_rows = [
-            [app_name, platform, f"[{versions.get(app_name) or '—'}]({download_urls[path.name]})"]
-            for app_name, platform, path in assets
+            [
+                app_name,
+                artifact.platform,
+                f"[{versions.get(app_name) or '—'}]({download_urls[release_asset_name(artifact.file, channel, commit_count)]})",
+            ]
+            for app_name, app in publish_config.apps.items()
+            for artifact in app.builds
         ]
-        blocks.append(f"{prefix} Apps\n{markdown_table(['App', 'Platform', 'Version'], assets_rows)}")
+        blocks.append(f"## Apps\n{markdown_table(['App', 'Platform', 'Version'], assets_rows)}")
 
     # List the images built at this SHA from the shelf, declared by the image manifest's presence
     if IMAGE_MANIFEST_PATH.is_file():
@@ -203,33 +223,31 @@ def main(
                 version_id = package_version_id(owner, package, entry.digest)
                 url = f"{page}/{version_id}?tag={image_tag}" if version_id else page
                 images_rows.append([display_name, f"[`{image_tag}`]({url})"])
-            blocks.append(f"{prefix} Built images\n{markdown_table(['Image', 'Tag'], images_rows)}")
-
-    # Join the blocks into one section
-    section = "\n\n".join(blocks)
-
-    # Splice the section into the draft body at its SHA anchor
-    if channel != ReleaseChannel.STABLE:
-        anchor = f"sha-{short_sha}"
-        parts = re.split(r'<a id="([^"]+)"></a>', body)
-        sections = {parts[index]: parts[index + 1].strip() for index in range(1, len(parts), 2)}
-        sections.pop(anchor, None)
-        sections = {anchor: section, **sections}
-        section = "\n\n".join(f'<a id="{anchor_id}"></a>\n{content}' for anchor_id, content in sections.items())
+            blocks.append(f"## Built images\n{markdown_table(['Image', 'Tag'], images_rows)}")
 
     # Apply the notes to the release from a temp file
+    notes = "\n\n".join(blocks) + "\n"
     with NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as file:
-        file.write(section + "\n")
+        file.write(notes)
         notes_path = file.name
 
     try:
-        bash(f"gh release edit {tag} --tag {tag} --repo {repository} --notes-file {notes_path}")
+        bash(f"gh release edit {tag} --repo {repository} --notes-file {notes_path}")
     finally:
         Path(notes_path).unlink()
 
-    # Reset the dev draft once the stable release is cut
+    # Append the run summary for the run page
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        release_url = json.loads(bash_output(f"{view_command} --json url"))["url"]
+        summary_lines = [f"## Run release\n\n{release_url}"]
+        summary_lines += [f"- [{name}]({url})" for name, url in sorted(download_urls.items())]
+        with open(summary_path, "a", encoding="utf-8") as file:
+            file.write("\n".join(summary_lines) + "\n")
+
+    # Sweep the dev releases once the stable release is cut
     if channel == ReleaseChannel.STABLE:
-        delete_draft_release(DEV_DRAFT_TAG, repository)
+        delete_releases_by_prefix("dev-", repository)
 
 
 def publish_packages(
@@ -348,10 +366,7 @@ def stage_apps(
         (source,) = layer.iterdir()
 
         # Copy the asset under its release name and record it
-        file_path = Path(artifact.file)
-        target = staging / (
-            file_path.name if channel == ReleaseChannel.STABLE else f"{file_path.stem}-{commit_count}{file_path.suffix}"
-        )
+        target = staging / release_asset_name(artifact.file, channel, commit_count)
         shutil.copy2(source, target)
         staged.append(StagedAsset(app_name, artifact.platform, target))
 
@@ -361,7 +376,8 @@ def stage_apps(
             create_and_push_tag(f"{app_name}-v{app_version}")
 
     # Upload the staged assets
-    bash(f"gh release upload {tag} {' '.join(f'"{path}"' for _, _, path in staged)} --clobber --repo {repository}")
+    upload_paths = " ".join(f'"{path}"' for _, _, path in staged)
+    bash(f"gh release upload {tag} {upload_paths} --clobber --repo {repository}")
 
     return staged
 
@@ -422,14 +438,12 @@ def package_version_id(owner: str, package: str, digest: str) -> int | None:
     return None
 
 
+def release_asset_name(file: str, channel: ReleaseChannel, commit_count: int) -> str:
+    file_path = Path(file)
+    return file_path.name if channel == ReleaseChannel.STABLE else f"{file_path.stem}-{commit_count}{file_path.suffix}"
+
+
 def markdown_table(headers: list[str], rows: list[list[str]]) -> str:
     lines = [f"| {' | '.join(headers)} |", f"|{'|'.join('---' for _ in headers)}|"]
     lines.extend(f"| {' | '.join(row)} |" for row in rows)
     return "\n".join(lines)
-
-
-def delete_draft_release(tag: str, repository: str) -> None:
-    if not bash_check(f"gh release view {tag} --repo {repository}"):
-        return
-    # Omit --cleanup-tag, since unpublished drafts never materialize a tag
-    bash(f"gh release delete {tag} --yes --repo {repository}")

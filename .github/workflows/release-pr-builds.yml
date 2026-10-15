@@ -1,10 +1,10 @@
-name: Update PR draft release
+name: Release PR builds
 
 on:
   workflow_call:
 
 jobs:
-  update-pr-draft-release:
+  release-pr-builds:
     if: github.event.pull_request
     runs-on: ubuntu-latest
     steps:

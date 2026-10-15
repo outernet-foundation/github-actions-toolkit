@@ -1,0 +1,20 @@
+name: Cleanup PR releases
+
+on:
+  workflow_call:
+    inputs:
+      pr-number:
+        description: PR number whose per-run releases get swept
+        type: number
+        required: true
+
+jobs:
+  cleanup-pr-releases:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: $/.github/actions/toolkit-checkout
+      - uses: $/.github/actions/setup-uv
+      - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev cleanup-pr-releases --pr-number "$PR_NUMBER"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr-number }}

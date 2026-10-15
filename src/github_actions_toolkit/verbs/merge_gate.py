@@ -8,7 +8,7 @@ from bashrun.bash import bash, bash_check, bash_output
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from github_actions_toolkit.config import Settings
-from github_actions_toolkit.verbs.release import delete_draft_release
+from github_actions_toolkit.releases import delete_releases_by_prefix
 
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 
@@ -102,7 +102,7 @@ def main(
             bash(f"{GIT_COMMAND} push origin --delete {head_ref}")
             print(f"  deleted branch {head_ref}")
 
-    delete_draft_release(f"pr-{pr_number}", repository)
+    delete_releases_by_prefix(f"pr-{pr_number}-", repository)
 
 
 def resolve_pr_number(head_sha: str, dry_run: bool) -> str | None:
@@ -145,7 +145,7 @@ def report_dry_run(head_sha: str, pr_number: str, pull_request: PullRequest) -> 
         print(f"  checkout HEAD {checked_out[:12]} is the PR head")
     else:
         print(f"  checkout HEAD {checked_out[:12]} is not the PR head {pull_request.head_oid[:12]}")
-    print(f"  would merge --no-ff into {BASE_BRANCH}, delete the head branch, delete the pr-{pr_number} draft")
+    print(f"  would merge --no-ff into {BASE_BRANCH}, delete the head branch, sweep the pr-{pr_number}-* releases")
 
 
 # The gate's own check reports as the bare job name from local-job gates and as
