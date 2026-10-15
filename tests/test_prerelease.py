@@ -16,14 +16,17 @@ from github_actions_toolkit.publishing import (
     semver_dev_version,
 )
 from github_actions_toolkit.verbs import release as release_module
-from github_actions_toolkit.verbs.release import DEV_DRAFT_TAG, DigestEntry, ReleaseChannel
+from github_actions_toolkit.verbs.release import DigestEntry, ReleaseChannel
 
 MERGE_SHA = "654321abcdef0987654321abcdef0987654321"
 CERTIFIED_SHA = "abcdef1234567890abcdef1234567890abcdef12"
 SHORT_SHA = CERTIFIED_SHA[:12]
 COMMIT_COUNT = 1563
-DRAFT_URL = "https://github.com/owner/repo/releases/untagged-abc"
-DRAFT_VIEW_JSON = json.dumps({"body": "", "url": DRAFT_URL})
+RELEASE_TAG = f"dev-{COMMIT_COUNT}"
+RELEASE_URL = f"https://github.com/owner/repo/releases/tag/{RELEASE_TAG}"
+ASSET_URL = f"https://github.com/owner/repo/releases/download/{RELEASE_TAG}"
+PR_NUMBER = 7
+PR_TITLE = "Add the thing"
 
 
 class FixedReturn:
@@ -142,11 +145,16 @@ def patch_plan_tags(monkeypatch: pytest.MonkeyPatch, tags: FakeTags) -> None:
     monkeypatch.setattr(release_module, "get_latest_version", tags.latest_version)
 
 
-def patch_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig, draft_body: str = "") -> FakePullArtifact:
+def patch_context(
+    monkeypatch: pytest.MonkeyPatch,
+    config: PublishConfig,
+    is_draft: bool = False,
+) -> FakePullArtifact:
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
     monkeypatch.setenv("GITHUB_ACTOR", "bot")
     monkeypatch.setenv("GITHUB_WORKSPACE", "/workspace")
     monkeypatch.setenv("GITHUB_REF", "refs/heads/dev")
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     monkeypatch.setattr(release_module, "load_config", FixedReturn(config))
     monkeypatch.setattr(release_module, "bash_check", FixedReturn(False))
     monkeypatch.setattr(release_module, "bash", CallRecorder())
@@ -159,18 +167,21 @@ def patch_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig, draft_
         if "%P" in command:
             return f"{MERGE_SHA} {CERTIFIED_SHA}\n"
         if command.startswith("git log"):
-            return "Merge PR #7: Add the thing\n"
+            return f"Merge PR #{PR_NUMBER}: {PR_TITLE}\n"
         if command.startswith("gh api /orgs/"):
             return "[]"
+        if command.endswith("--json isDraft"):
+            return json.dumps({"isDraft": is_draft})
         if "--json assets" in command:
             names = [
                 f"{Path(artifact.file).stem}-{COMMIT_COUNT}{Path(artifact.file).suffix}"
                 for app in config.apps.values()
                 for artifact in app.builds or []
             ]
-            names.append(f"MyApp-AndroidMobile-{COMMIT_COUNT - 1}.apk")
-            return json.dumps({"assets": [{"name": name, "url": f"{DRAFT_URL}/{name}"} for name in names]})
-        return json.dumps({"body": draft_body, "url": DRAFT_URL})
+            return json.dumps({"assets": [{"name": name, "url": f"{ASSET_URL}/{name}"} for name in names]})
+        if command.endswith("--json url"):
+            return json.dumps({"url": RELEASE_URL})
+        raise AssertionError(f"unexpected command {command}")
 
     monkeypatch.setattr(release_module, "bash_output", dispatching_bash_output)
     layers = {
@@ -216,7 +227,46 @@ def run_dev_release(
     return npm_registry, create_and_push_tag, pull_artifact, written
 
 
-def test_noop_merge_publishes_nothing_but_writes_section(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cuts_dev_prerelease_with_count_tag_and_pr_title(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = make_config(apps={"myapp": make_app()})
+    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
+
+    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
+    patch_plan_tags(monkeypatch, tags)
+    patch_context(monkeypatch, config)
+    patch_publish_internals(monkeypatch)
+    bash_log = CallRecorder()
+    monkeypatch.setattr(release_module, "bash", bash_log)
+
+    release_module.main(channel=ReleaseChannel.DEV)
+
+    commands = [call[0] for call in bash_log.calls if isinstance(call[0], str)]
+    create = next(command for command in commands if "gh release create" in command)
+    assert f"gh release create {RELEASE_TAG} " in create
+    assert f"PR #{PR_NUMBER}: {PR_TITLE} · build {COMMIT_COUNT}" in create
+
+
+def test_uploads_before_publish_and_writes_notes_after(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = make_config(apps={"myapp": make_app()})
+    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
+
+    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
+    patch_plan_tags(monkeypatch, tags)
+    patch_context(monkeypatch, config)
+    patch_publish_internals(monkeypatch)
+    bash_log = CallRecorder()
+    monkeypatch.setattr(release_module, "bash", bash_log)
+
+    release_module.main(channel=ReleaseChannel.DEV)
+
+    commands = [call[0] for call in bash_log.calls if isinstance(call[0], str)]
+    upload_index = next(index for index, command in enumerate(commands) if "gh release upload" in command)
+    publish_index = next(index for index, command in enumerate(commands) if "--draft=false --prerelease" in command)
+    notes_index = next(index for index, command in enumerate(commands) if "--notes-file" in command)
+    assert upload_index < publish_index < notes_index
+
+
+def test_noop_merge_publishes_nothing_but_cuts_release(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(apps={"myapp": make_app()})
     tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
 
@@ -227,7 +277,7 @@ def test_noop_merge_publishes_nothing_but_writes_section(monkeypatch: pytest.Mon
     assert written != []
 
 
-def test_only_packages_changed_publishes_and_appends_section(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_only_packages_changed_publishes_and_cuts_release(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(
         packages={
             "pkg": PackageConfig(path=Path("packages/pkg"), major_minor="1.0", registry="pypi", identity="pkg-id")
@@ -248,10 +298,10 @@ def test_only_packages_changed_publishes_and_appends_section(monkeypatch: pytest
     assert create_and_push_tag.calls == []
     assert pull_artifact.calls != []
     assert written != []
-    assert f'<a id="sha-{SHORT_SHA}"></a>' in written[0]
+    assert "<a id=" not in written[0]
 
 
-def test_only_apps_changed_surfaces_draft_but_skips_publish(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_only_apps_changed_cuts_release_but_skips_publish(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(apps={"myapp": make_app()})
     tags = FakeTags(versions={"myapp": "1.0.0"}, changed={"myapp"})
 
@@ -276,11 +326,11 @@ def test_only_apps_changed_surfaces_draft_but_skips_publish(monkeypatch: pytest.
     assert pull_artifact.calls != []
     assert pull_artifact.calls[0][3] == f"sha-{CERTIFIED_SHA}"
     assert len(written) == 1
-    assert "#### Apps" in written[0]
+    assert "## Apps" in written[0]
     assert "| App | Platform | Version |" in written[0]
-    fresh_link = f"{DRAFT_URL}/MyApp-AndroidMobile-{COMMIT_COUNT}.apk"
+    fresh_link = f"{ASSET_URL}/MyApp-AndroidMobile-{COMMIT_COUNT}.apk"
     assert f"| myapp | AndroidMobile | [1.0.0]({fresh_link}) |" in written[0]
-    assert f"releases/download/{DEV_DRAFT_TAG}/" not in written[0]
+    assert f"— [PR #{PR_NUMBER}: {PR_TITLE}]" in written[0]
 
 
 def test_stages_all_apps_regardless_of_source_changes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -303,9 +353,7 @@ def test_stages_all_apps_regardless_of_source_changes(monkeypatch: pytest.Monkey
     assert ("AppB", "AndroidMobile") in pulled
 
 
-def test_any_new_digest_appends_snapshot_section_with_all_images(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_any_new_digest_cuts_release_with_all_images(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     manifest_path = tmp_path / "workloads" / "images.yml"
     manifest_path.parent.mkdir()
@@ -347,9 +395,7 @@ def test_any_new_digest_appends_snapshot_section_with_all_images(
     assert f"### Commit [{SHORT_SHA}](https://github.com/owner/repo/commit/{CERTIFIED_SHA})" in written[0]
 
 
-def test_snapshot_section_lists_all_packages_with_dev_and_stable_versions(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_release_lists_all_packages_with_dev_and_stable_versions(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(
         packages={
             "fresh": PackageConfig(
@@ -375,6 +421,56 @@ def test_snapshot_section_lists_all_packages_with_dev_and_stable_versions(
     assert "| never | pypi | 0.0.0 |" in written[0]
 
 
+def test_rerun_of_published_release_rewrites_notes_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = make_config(
+        packages={
+            "pkg": PackageConfig(path=Path("packages/pkg"), major_minor="1.0", registry="pypi", identity="pkg-id")
+        },
+        apps={"myapp": make_app()},
+    )
+    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
+
+    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan({"pkg"})))
+    patch_plan_tags(monkeypatch, tags)
+    pull_artifact = patch_context(monkeypatch, config, is_draft=False)
+    npm_registry, _ = patch_publish_internals(monkeypatch)
+    monkeypatch.setattr(release_module, "bash_check", FixedReturn(True))
+    bash_log = CallRecorder()
+    monkeypatch.setattr(release_module, "bash", bash_log)
+
+    release_module.main(channel=ReleaseChannel.DEV)
+
+    commands = [call[0] for call in bash_log.calls if isinstance(call[0], str)]
+    assert not any("gh release create" in command for command in commands)
+    assert not any("gh release upload" in command for command in commands)
+    assert not any("--draft=false" in command for command in commands)
+    assert any(f"gh release edit {RELEASE_TAG} " in command and "--notes-file" in command for command in commands)
+    assert len(npm_registry.calls) == 1
+    assert pull_artifact.calls == []
+
+
+def test_leftover_draft_from_botched_run_is_replaced(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = make_config(apps={"myapp": make_app()})
+    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
+
+    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
+    patch_plan_tags(monkeypatch, tags)
+    patch_context(monkeypatch, config, is_draft=True)
+    patch_publish_internals(monkeypatch)
+    monkeypatch.setattr(release_module, "bash_check", FixedReturn(True))
+    bash_log = CallRecorder()
+    monkeypatch.setattr(release_module, "bash", bash_log)
+
+    release_module.main(channel=ReleaseChannel.DEV)
+
+    commands = [call[0] for call in bash_log.calls if isinstance(call[0], str)]
+    delete_index = next(
+        index for index, command in enumerate(commands) if f"gh release delete {RELEASE_TAG}" in command
+    )
+    create_index = next(index for index, command in enumerate(commands) if "gh release create" in command)
+    assert delete_index < create_index
+
+
 def test_dev_version_spelling_per_registry() -> None:
     assert pep440_dev_version("0.2.1", COMMIT_COUNT) == "0.2.1.dev1563"
     assert semver_dev_version("0.2.1", COMMIT_COUNT) == "0.2.1-dev.1563"
@@ -393,93 +489,6 @@ def test_resolve_publish_versions_spells_co_publishing_siblings_with_the_run_cou
 
     assert version == "0.2.1.dev1563"
     assert dependency_versions == {"co-id": "1.2.0.dev1563", "settled-id": "2.0.0"}
-
-
-def test_dev_run_relinks_retired_asset_addresses(monkeypatch: pytest.MonkeyPatch) -> None:
-    stale_key = "untagged-e3d837de6eb911b634ef"
-    stale_name = f"MyApp-AndroidMobile-{COMMIT_COUNT - 1}.apk"
-    draft_body = (
-        f'<a id="sha-old"></a>\n#### Apps\n| myapp | AndroidMobile | [1.0.0]'
-        f"(https://github.com/owner/repo/releases/download/{stale_key}/{stale_name}) |"
-    )
-    config = make_config(apps={"myapp": make_app()})
-    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
-    patch_plan_tags(monkeypatch, FakeTags(versions={"myapp": "1.0.0"}, changed=set()))
-    patch_context(monkeypatch, config, draft_body)
-    monkeypatch.setattr(release_module, "bash_check", FixedReturn(True))
-    written: list[str] = []
-
-    def capturing_bash(command: str) -> None:
-        if "--notes-file" in command:
-            path = command.split("--notes-file", 1)[1].strip().split()[0]
-            written.append(Path(path).read_text(encoding="utf-8"))
-
-    monkeypatch.setattr(release_module, "bash", capturing_bash)
-
-    release_module.main(channel=ReleaseChannel.DEV)
-
-    assert len(written) == 1
-    assert f"({DRAFT_URL}/{stale_name})" in written[0]
-    assert stale_key not in written[0]
-
-
-def test_existing_dev_draft_viewed_once_per_run(monkeypatch: pytest.MonkeyPatch) -> None:
-    config = make_config(
-        packages={
-            "pkg": PackageConfig(path=Path("packages/pkg"), major_minor="1.0", registry="pypi", identity="pkg-id")
-        },
-        apps={"myapp": make_app()},
-    )
-    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
-
-    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan({"pkg"})))
-    patch_plan_tags(monkeypatch, tags)
-    patch_context(monkeypatch, config)
-    patch_publish_internals(monkeypatch)
-    monkeypatch.setattr(release_module, "bash_check", FixedReturn(True))
-    view_calls: list[str] = []
-
-    def counting_bash_output(command: str) -> str:
-        if command == "git rev-parse HEAD":
-            return MERGE_SHA
-        if command == f"git rev-list --count {CERTIFIED_SHA}":
-            return str(COMMIT_COUNT)
-        if "%P" in command:
-            return f"{MERGE_SHA} {CERTIFIED_SHA}\n"
-        if command.startswith("git log"):
-            return "Merge PR #7: Add the thing\n"
-        if "--json assets" in command:
-            view_calls.append(command)
-            return json.dumps({
-                "assets": [
-                    {
-                        "name": f"MyApp-AndroidMobile-{COMMIT_COUNT}.apk",
-                        "url": DRAFT_URL + f"/MyApp-AndroidMobile-{COMMIT_COUNT}.apk",
-                    }
-                ]
-            })
-        if command.startswith("gh release view"):
-            view_calls.append(command)
-            return DRAFT_VIEW_JSON
-        raise AssertionError(f"unexpected command {command}")
-
-    monkeypatch.setattr(release_module, "bash_output", counting_bash_output)
-    bash_recorder = CallRecorder()
-    monkeypatch.setattr(release_module, "bash", bash_recorder)
-
-    release_module.main(channel=ReleaseChannel.DEV)
-
-    assert view_calls == [
-        f"gh release view {DEV_DRAFT_TAG} --repo owner/repo --json body",
-        f"gh release view {DEV_DRAFT_TAG} --repo owner/repo --json assets",
-    ]
-    assert any(
-        isinstance(command[0], str)
-        and command[0].startswith(
-            f"gh release edit {DEV_DRAFT_TAG} --tag {DEV_DRAFT_TAG} --repo owner/repo --notes-file"
-        )
-        for command in bash_recorder.calls
-    )
 
 
 def run_merge_identity(monkeypatch: pytest.MonkeyPatch, parents_output: str) -> FakePullArtifact:

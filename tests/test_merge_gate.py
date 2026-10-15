@@ -53,7 +53,7 @@ def accept_any_bash_check(command: str) -> bool:
     return True
 
 
-def noop_delete_draft(tag: str, repo: str) -> None:
+def noop_sweep(prefix: str, repo: str) -> None:
     pass
 
 
@@ -65,7 +65,7 @@ def run_gate(
     monkeypatch: pytest.MonkeyPatch,
     responses: dict[str, str],
     bash_check_fn: Callable[[str], bool] | None = None,
-    delete_draft_fn: Callable[[str, str], None] | None = None,
+    delete_sweep_fn: Callable[[str, str], None] | None = None,
     dry_run: bool = False,
 ) -> tuple[SystemExit | None, BashLog]:
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
@@ -75,7 +75,7 @@ def run_gate(
     bash_log = BashLog()
     monkeypatch.setattr(merge_gate, "bash", bash_log)
     monkeypatch.setattr(merge_gate, "bash_check", bash_check_fn or accept_any_bash_check)
-    monkeypatch.setattr(merge_gate, "delete_draft_release", delete_draft_fn or noop_delete_draft)
+    monkeypatch.setattr(merge_gate, "delete_releases_by_prefix", delete_sweep_fn or noop_sweep)
     try:
         merge_gate.main(head_sha=HEAD_SHA, dry_run=dry_run)
     except SystemExit as exit_request:
@@ -259,21 +259,21 @@ def test_gate_tolerates_already_deleted_branch(monkeypatch: pytest.MonkeyPatch) 
     assert not any("push origin --delete" in command for command in bash_log.commands)
 
 
-def test_gate_deletes_pr_draft_after_merge(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gate_sweeps_pr_releases_after_merge(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = pr_view_payload(["ready-to-merge"], GREEN_ROLLUP)
-    deleted: list[tuple[str, str]] = []
+    swept: list[tuple[str, str]] = []
 
-    def record_draft_deletion(tag: str, repo: str) -> None:
-        deleted.append((tag, repo))
+    def record_sweep(prefix: str, repo: str) -> None:
+        swept.append((prefix, repo))
 
     exit_request, _ = run_gate(
         monkeypatch,
         gate_responses(payload),
-        delete_draft_fn=record_draft_deletion,
+        delete_sweep_fn=record_sweep,
     )
 
     assert exit_request is None
-    assert deleted == [("pr-7", "owner/repo")]
+    assert swept == [("pr-7-", "owner/repo")]
 
 
 def test_dry_run_reports_a_landed_shape_pr_without_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
