@@ -9,6 +9,9 @@ on:
         default: false
         type: boolean
 
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   plan-docker-builds:
     runs-on: ubuntu-latest

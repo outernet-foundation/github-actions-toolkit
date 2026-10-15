@@ -19,6 +19,9 @@ on:
         description: Unity license serial
         required: true
 
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   plan-unity-compile-checks:
     runs-on: ubuntu-latest

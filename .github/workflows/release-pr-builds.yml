@@ -3,6 +3,9 @@ name: Release PR builds
 on:
   workflow_call:
 
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   release-pr-builds:
     if: github.event.pull_request

@@ -8,6 +8,9 @@ on:
         type: number
         required: true
 
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   cleanup-pr-releases:
     runs-on: ubuntu-latest

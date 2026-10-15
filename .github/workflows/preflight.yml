@@ -8,6 +8,9 @@ on:
         type: boolean
         default: true
 
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   preflight:
     runs-on: ubuntu-latest

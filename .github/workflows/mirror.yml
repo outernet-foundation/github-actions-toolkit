@@ -3,6 +3,9 @@ name: Mirror images
 on:
   workflow_call:
 
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   mirror-images:
     runs-on: ubuntu-latest
