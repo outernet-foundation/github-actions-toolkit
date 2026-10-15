@@ -9,8 +9,8 @@ from typing import Annotated
 import typer
 from pydantic import TypeAdapter, ValidationError
 
-from github_actions_toolkit.config import DEFAULT_CONFIG_PATH, AppConfig, PublishConfig, load_config
-from github_actions_toolkit.plan import get_latest_version, latest_version_in_line, next_version
+from github_actions_toolkit.config import DEFAULT_CONFIG_PATH, PublishConfig, load_config
+from github_actions_toolkit.plan import app_base_version
 
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 
@@ -68,10 +68,3 @@ def owning_apps_by_project(publish_config: PublishConfig) -> dict[str, str]:
                 raise SystemExit(f"project '{build.project}' is built by apps '{existing}' and '{application}'")
             owners[build.project] = application
     return owners
-
-
-def app_base_version(app_config: AppConfig, application: str) -> str:
-    prefix = f"{application}-v"
-    last_version = get_latest_version(prefix)
-    last_in_line = latest_version_in_line(prefix, app_config.major_minor)
-    return next_version(app_config.major_minor, last_in_line, last_version, application)

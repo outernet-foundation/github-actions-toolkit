@@ -55,6 +55,13 @@ class FakeTags:
     def latest_version(self, prefix: str) -> str | None:
         return self._versions.get(prefix.removesuffix("-v"))
 
+    def base_version(self, app_config: AppConfig, name: str) -> str:
+        last = self._versions.get(name)
+        if last is None:
+            return f"{app_config.major_minor}.0"
+        major, minor, patch = last.split(".")
+        return f"{major}.{minor}.{int(patch) + 1}"
+
 
 class FakePullArtifact:
     def __init__(self, layers: dict[tuple[str, str], dict[str, str]]) -> None:
@@ -143,6 +150,7 @@ def make_plan(
 
 def patch_plan_tags(monkeypatch: pytest.MonkeyPatch, tags: FakeTags) -> None:
     monkeypatch.setattr(release_module, "get_latest_version", tags.latest_version)
+    monkeypatch.setattr(release_module, "app_base_version", tags.base_version)
 
 
 def patch_context(
@@ -329,7 +337,7 @@ def test_only_apps_changed_cuts_release_but_skips_publish(monkeypatch: pytest.Mo
     assert "## Apps" in written[0]
     assert "| App | Platform | Version |" in written[0]
     fresh_link = f"{ASSET_URL}/MyApp-AndroidMobile-{COMMIT_COUNT}.apk"
-    assert f"| myapp | AndroidMobile | [1.0.0]({fresh_link}) |" in written[0]
+    assert f"| myapp | AndroidMobile | [1.0.1+{COMMIT_COUNT}]({fresh_link}) |" in written[0]
     assert f"— [PR #{PR_NUMBER}: {PR_TITLE}]" in written[0]
 
 

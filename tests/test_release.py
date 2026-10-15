@@ -13,6 +13,7 @@ from github_actions_toolkit.verbs.release import ReleaseChannel
 
 HEAD_SHA = "1111111111111111111111111111111111111111"
 CERTIFIED_SHA = "abcdef1234567890abcdef1234567890abcdef12"
+CERTIFIED_COUNT = 42
 
 
 class FixedReturn:
@@ -69,6 +70,8 @@ def patch_stable_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig)
     def dispatching_bash_output(command: str) -> str:
         if command == "git rev-parse HEAD":
             return HEAD_SHA
+        if command == f"git rev-list --count {CERTIFIED_SHA}":
+            return str(CERTIFIED_COUNT)
         if "%P" in command:
             return f"{HEAD_SHA} {CERTIFIED_SHA}\n"
         if command.startswith("gh release list"):
@@ -170,7 +173,7 @@ def test_release_writes_notes_from_published_assets_without_tag_guard(
     assert "### Commit [abcdef123456]" in written[0]
     assert "## Apps" in written[0]
     assert (
-        f"| myapp | AndroidMobile | [1.0.0]"
+        f"| myapp | AndroidMobile | [1.0.0+{CERTIFIED_COUNT}]"
         f"(https://github.com/owner/repo/releases/download/{release_tag}/MyApp-AndroidMobile.apk) |"
     ) in written[0]
     assert "## Packages" not in written[0]

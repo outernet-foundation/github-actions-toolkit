@@ -6,7 +6,7 @@ from pathlib import Path
 
 from bashrun.bash import bash_check, bash_output
 
-from github_actions_toolkit.config import PublishConfig
+from github_actions_toolkit.config import AppConfig, PublishConfig
 from github_actions_toolkit.manifests import DependencyEdge, resolve_edges
 
 UNCHANGED_FALLBACK_VERSION = "0.0.0"
@@ -129,6 +129,13 @@ def resolve_dependency_versions(
             )
         resolved[edge.identity] = ResolvedDependency(version=dependency_plan.last_version, co_publishing=False)
     return resolved
+
+
+def app_base_version(app_config: AppConfig, application: str) -> str:
+    prefix = f"{application}-v"
+    last_version = get_latest_version(prefix)
+    last_in_line = latest_version_in_line(prefix, app_config.major_minor)
+    return next_version(app_config.major_minor, last_in_line, last_version, application)
 
 
 def next_version(major_minor: str, last_in_line: str | None, last_overall: str | None, subject: str) -> str:

@@ -45,6 +45,13 @@ class FakeTags:
     def latest_version(self, prefix: str) -> str | None:
         return self._versions.get(prefix.removesuffix("-v"))
 
+    def base_version(self, app_config: AppConfig, name: str) -> str:
+        last = self._versions.get(name)
+        if last is None:
+            return f"{app_config.major_minor}.0"
+        major, minor, patch = last.split(".")
+        return f"{major}.{minor}.{int(patch) + 1}"
+
     def has_changes_since(self, tag: str | None, path: Path) -> bool:
         if tag is None:
             return True
@@ -84,6 +91,7 @@ def patch_plan_tags(monkeypatch: pytest.MonkeyPatch, tags: FakeTags) -> None:
     monkeypatch.setattr(plan_module, "get_latest_version", tags.latest_version)
     monkeypatch.setattr(plan_module, "has_changes_since", tags.has_changes_since)
     monkeypatch.setattr(release_module, "get_latest_version", tags.latest_version)
+    monkeypatch.setattr(release_module, "app_base_version", tags.base_version)
 
 
 def make_build_config() -> PublishConfig:
@@ -508,8 +516,11 @@ def test_lists_one_row_per_staged_artifact(monkeypatch: pytest.MonkeyPatch) -> N
     release_module.main(channel=ReleaseChannel.PR)
 
     assert written
-    assert f"| myapp | AndroidMobile | [1.0.0]({ASSET_URL}/MyApp-AndroidMobile-{COMMIT_COUNT}.apk) |" in written[0]
-    assert f"| myapp | IOS | [1.0.0]({ASSET_URL}/MyApp-IOS-{COMMIT_COUNT}.apk) |" in written[0]
+    assert (
+        f"| myapp | AndroidMobile | [1.0.1+{COMMIT_COUNT}]({ASSET_URL}/MyApp-AndroidMobile-{COMMIT_COUNT}.apk) |"
+        in written[0]
+    )
+    assert f"| myapp | IOS | [1.0.1+{COMMIT_COUNT}]({ASSET_URL}/MyApp-IOS-{COMMIT_COUNT}.apk) |" in written[0]
 
 
 def test_delete_releases_by_prefix_sweeps_matching_releases(monkeypatch: pytest.MonkeyPatch) -> None:

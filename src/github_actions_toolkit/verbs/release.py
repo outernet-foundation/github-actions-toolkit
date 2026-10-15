@@ -29,6 +29,7 @@ from github_actions_toolkit.config import (
 from github_actions_toolkit.plan import (
     UNCHANGED_FALLBACK_VERSION,
     ReleasePlan,
+    app_base_version,
     compute_release_plan,
     get_latest_version,
 )
@@ -112,6 +113,11 @@ def main(
     # Count commits at the PR head the app binaries were stamped from
     commit_count = int(bash_output(f"git rev-list --count {sha}").strip()) if channel != ReleaseChannel.STABLE else 0
 
+    # Stable tags names by CalVer instead of the count, but its assets still carry the certified head's stamp
+    asset_count = (
+        commit_count if channel != ReleaseChannel.STABLE else int(bash_output(f"git rev-list --count {sha}").strip())
+    )
+
     # Lay out the release notes scaffolding
     heading = f"### Commit [{short_sha}](https://github.com/{settings.github_repository}/commit/{sha})"
     blocks: list[str] = []
@@ -122,12 +128,10 @@ def main(
             pr_number = re.findall(r"^refs/pull/(\d+)/merge$", settings.github_ref)[0]
             tag = f"pr-{pr_number}-{commit_count}"
             title = f"PR #{pr_number} · {short_sha} · build {commit_count}"
-            versions = {name: get_latest_version(f"{name}-v") for name in publish_config.apps}
             blocks.append(heading)
 
         case ReleaseChannel.DEV:
             tag = f"dev-{commit_count}"
-            versions = release_plan.app_last_versions
 
             pr_number, pr_title = re.findall(
                 r"Merge PR #(\d+): (.+)", bash_output(f"git log -1 --format=%B {head}").strip()
@@ -146,8 +150,9 @@ def main(
             ).strip()
             tag = f"{year_month}.{(int(existing) if existing else 0) + 1}"
             title = tag
-            versions = {**release_plan.app_last_versions, **release_plan.app_versions}
             blocks.append(heading)
+
+    versions = stamped_app_versions(publish_config, release_plan, channel, asset_count)
 
     repository = settings.github_repository
 
@@ -196,7 +201,7 @@ def main(
             [
                 app_name,
                 artifact.platform,
-                f"[{versions.get(app_name) or '—'}]({download_urls[release_asset_name(artifact.file, channel, commit_count)]})",
+                f"[{versions[app_name]}]({download_urls[release_asset_name(artifact.file, channel, commit_count)]})",
             ]
             for app_name, app in publish_config.apps.items()
             for artifact in app.builds
@@ -248,6 +253,18 @@ def main(
     # Sweep the dev releases once the stable release is cut
     if channel == ReleaseChannel.STABLE:
         delete_releases_by_prefix("dev-", repository)
+
+
+def stamped_app_versions(
+    publish_config: PublishConfig, release_plan: ReleasePlan, channel: ReleaseChannel, asset_count: int
+) -> dict[str, str]:
+    stamped: dict[str, str] = {}
+    for app_name, app_config in publish_config.apps.items():
+        base = release_plan.app_versions.get(app_name) if channel == ReleaseChannel.STABLE else None
+        if base is None:
+            base = app_base_version(app_config, app_name)
+        stamped[app_name] = f"{base}+{asset_count}"
+    return stamped
 
 
 def publish_packages(
