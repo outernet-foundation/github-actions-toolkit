@@ -243,7 +243,7 @@ def test_cuts_dev_prerelease_with_count_tag_and_pr_title(monkeypatch: pytest.Mon
     commands = [call[0] for call in bash_log.calls if isinstance(call[0], str)]
     create = next(command for command in commands if "gh release create" in command)
     assert f"gh release create {RELEASE_TAG} " in create
-    assert f"PR #{PR_NUMBER}: {PR_TITLE} · build {COMMIT_COUNT}" in create
+    assert f"dev build {COMMIT_COUNT} · PR #{PR_NUMBER}: {PR_TITLE}" in create
 
 
 def test_uploads_before_publish_and_writes_notes_after(monkeypatch: pytest.MonkeyPatch) -> None:

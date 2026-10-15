@@ -132,7 +132,7 @@ def main(
             pr_number, pr_title = re.findall(
                 r"Merge PR #(\d+): (.+)", bash_output(f"git log -1 --format=%B {head}").strip()
             )[0]
-            title = f"PR #{pr_number}: {pr_title} · build {commit_count}"
+            title = f"dev build {commit_count} · PR #{pr_number}: {pr_title}"
             blocks.append(
                 f"{heading} — [PR #{pr_number}: {pr_title}]"
                 f"(https://github.com/{settings.github_repository}/pull/{pr_number})"
