@@ -9,6 +9,10 @@ on:
 
 permissions:
   contents: read
+  packages: write
+
+env:
+  PYTHONUNBUFFERED: "1"
 
 jobs:
   merge-gate:
@@ -31,3 +35,6 @@ jobs:
       - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev merge-gate --head-sha ${{ github.event.pull_request.head.sha }}
         env:
           GITHUB_TOKEN: ${{ steps.mint.outputs.token }}
+          REGISTRY: ghcr.io/${{ github.repository }}
+          REGISTRY_TOKEN: ${{ github.token }}
+          REGISTRY_USERNAME: ${{ github.actor }}

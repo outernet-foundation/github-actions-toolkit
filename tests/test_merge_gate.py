@@ -1,5 +1,6 @@
 import json
 from collections.abc import Callable, Mapping, Sequence
+from subprocess import CalledProcessError
 
 import pytest
 
@@ -57,6 +58,14 @@ def noop_sweep(prefix: str, repo: str) -> None:
     pass
 
 
+def noop_install_oras() -> None:
+    pass
+
+
+def noop_promote(registry: str, name: str, pr_number: int) -> list[str]:
+    return []
+
+
 def exit_message(exit_request: SystemExit) -> str:
     return str(exit_request.code)
 
@@ -66,6 +75,7 @@ def run_gate(
     responses: dict[str, str],
     bash_check_fn: Callable[[str], bool] | None = None,
     delete_sweep_fn: Callable[[str, str], None] | None = None,
+    promote_fn: Callable[[str, str, int], list[str]] | None = None,
     dry_run: bool = False,
 ) -> tuple[SystemExit | None, BashLog]:
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
@@ -76,6 +86,8 @@ def run_gate(
     monkeypatch.setattr(merge_gate, "bash", bash_log)
     monkeypatch.setattr(merge_gate, "bash_check", bash_check_fn or accept_any_bash_check)
     monkeypatch.setattr(merge_gate, "delete_releases_by_prefix", delete_sweep_fn or noop_sweep)
+    monkeypatch.setattr(merge_gate, "install_oras", noop_install_oras)
+    monkeypatch.setattr(merge_gate, "promote_scope", promote_fn or noop_promote)
     try:
         merge_gate.main(head_sha=HEAD_SHA, dry_run=dry_run)
     except SystemExit as exit_request:
@@ -276,6 +288,39 @@ def test_gate_sweeps_pr_releases_after_merge(monkeypatch: pytest.MonkeyPatch) ->
     assert swept == [("pr-7-", "owner/repo")]
 
 
+def test_gate_promotes_cache_tags_after_merge(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = pr_view_payload(["ready-to-merge"], GREEN_ROLLUP)
+    promoted: list[tuple[str, str, int]] = []
+
+    def record_promote(registry: str, name: str, pr_number: int) -> list[str]:
+        promoted.append((registry, name, pr_number))
+        return ["capturetool-AndroidMobile-dev"]
+
+    exit_request, _ = run_gate(
+        monkeypatch,
+        gate_responses(payload),
+        promote_fn=record_promote,
+    )
+
+    assert exit_request is None
+    assert promoted == [("ghcr.io/owner/repo/cache", "unity-library", 7)]
+
+
+def test_gate_tolerates_a_failed_cache_promotion(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = pr_view_payload(["ready-to-merge"], GREEN_ROLLUP)
+
+    def failing_promote(registry: str, name: str, pr_number: int) -> list[str]:
+        raise CalledProcessError(returncode=1, cmd="oras repo tags ghcr.io/owner/repo/cache/unity-library")
+
+    exit_request, _ = run_gate(
+        monkeypatch,
+        gate_responses(payload),
+        promote_fn=failing_promote,
+    )
+
+    assert exit_request is None
+
+
 def test_dry_run_reports_a_landed_shape_pr_without_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = pr_view_payload(["ready-to-merge"], GREEN_ROLLUP)
     exit_request, bash_log = run_gate(monkeypatch, gate_responses(payload), dry_run=True)
@@ -284,6 +329,15 @@ def test_dry_run_reports_a_landed_shape_pr_without_side_effects(monkeypatch: pyt
     assert not any("merge --no-ff" in command for command in bash_log.commands)
     assert not any("--delete" in command for command in bash_log.commands)
     assert any("fetch origin refs/heads/dev" in command for command in bash_log.commands)
+
+
+def test_dry_run_reports_the_cache_promotion(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = pr_view_payload(["ready-to-merge"], GREEN_ROLLUP)
+    exit_request, _ = run_gate(monkeypatch, gate_responses(payload), dry_run=True)
+    assert exit_request is None
+    assert "would promote unity-library cache tags for pr-7" in capsys.readouterr().out
 
 
 def test_dry_run_treats_a_missing_label_as_informational(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import shlex
+from subprocess import CalledProcessError
 from typing import Annotated
 
 import typer
 from bashrun.bash import bash, bash_check, bash_output
+from build_artifact_registry.cache import promote_scope
+from build_artifact_registry.setup_oras import install_oras
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from github_actions_toolkit.config import Settings
@@ -18,6 +21,7 @@ GIT_COMMAND = f"git -c credential.helper='{GIT_CREDENTIAL_HELPER}'"
 GREEN_CONCLUSIONS = frozenset({"SUCCESS", "SKIPPED"})
 GATE_CHECK_NAME = "merge-gate"
 LABEL_NAME = "ready-to-merge"
+LIBRARY_CACHE_REPOSITORY = "unity-library"
 WAITING_STATUSES = frozenset({"IN_PROGRESS", "QUEUED", "PENDING", "WAITING"})
 
 
@@ -103,6 +107,7 @@ def main(
             print(f"  deleted branch {head_ref}")
 
     delete_releases_by_prefix(f"pr-{pr_number}-", repository)
+    promote_cache_tags(repository, pr_number)
 
 
 def resolve_pr_number(head_sha: str, dry_run: bool) -> str | None:
@@ -146,6 +151,7 @@ def report_dry_run(head_sha: str, pr_number: str, pull_request: PullRequest) -> 
     else:
         print(f"  checkout HEAD {checked_out[:12]} is not the PR head {pull_request.head_oid[:12]}")
     print(f"  would merge --no-ff into {BASE_BRANCH}, delete the head branch, sweep the pr-{pr_number}-* releases")
+    print(f"  would promote {LIBRARY_CACHE_REPOSITORY} cache tags for pr-{pr_number}")
 
 
 # The gate's own check reports as the bare job name from local-job gates and as
@@ -157,3 +163,18 @@ def merge_battery(pull_request: PullRequest) -> list[CheckEntry]:
         for entry in pull_request.check_rollup
         if entry.name != GATE_CHECK_NAME and not entry.name.endswith(f" / {GATE_CHECK_NAME}")
     ]
+
+
+def promote_cache_tags(repository: str, pr_number: str) -> None:
+    registry = f"ghcr.io/{repository}/cache"
+    try:
+        install_oras()
+        promoted = promote_scope(registry, LIBRARY_CACHE_REPOSITORY, int(pr_number))
+    except CalledProcessError as failure:
+        print(
+            f"WARNING: {LIBRARY_CACHE_REPOSITORY} promotion to dev failed for PR #{pr_number} — "
+            f"the dev cache is not refreshed, the next PR falls back to the previous one ({failure})"
+        )
+        return
+    if promoted:
+        print(f"  promoted {len(promoted)} {LIBRARY_CACHE_REPOSITORY} tag(s) onto the dev scope")
