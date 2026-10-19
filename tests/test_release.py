@@ -72,8 +72,16 @@ def patch_stable_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig)
             return HEAD_SHA
         if command == f"git rev-list --count {CERTIFIED_SHA}":
             return str(CERTIFIED_COUNT)
-        if "%P" in command:
-            return f"{HEAD_SHA} {CERTIFIED_SHA}\n"
+        if command.startswith("gh api repos/") and command.endswith("/pulls"):
+            return json.dumps([
+                {
+                    "number": 3,
+                    "title": "Stable landing",
+                    "merged": True,
+                    "merge_commit_sha": HEAD_SHA,
+                    "head": {"sha": CERTIFIED_SHA},
+                }
+            ])
         if command.startswith("gh release list"):
             return "0"
         if "--json assets" in command:

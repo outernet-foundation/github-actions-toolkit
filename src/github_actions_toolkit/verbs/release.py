@@ -8,6 +8,7 @@ import shlex
 import shutil
 from datetime import UTC, datetime
 from enum import StrEnum
+from operator import itemgetter
 from pathlib import Path
 from subprocess import CalledProcessError
 from tempfile import NamedTemporaryFile, mkdtemp
@@ -72,6 +73,12 @@ class StagedAsset(NamedTuple):
     path: Path
 
 
+class LandedPr(NamedTuple):
+    number: str
+    title: str
+    head_sha: str
+
+
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 
 
@@ -105,12 +112,18 @@ def main(
             if not release_plan.publishing and not release_plan.app_versions:
                 return
 
-    # Resolve the PR head SHA for the channel
+    # Resolve the landed PR and the certified head SHA for the channel
+    repository = settings.github_repository
     head = bash_output("git rev-parse HEAD").strip()
-    sha = head if channel == ReleaseChannel.PR else bash_output(f"git log -1 --format=%P {head}").strip().split()[1]
+    landed = resolve_landed_pr(repository, head) if channel != ReleaseChannel.PR else None
+    sha = landed.head_sha if landed else head
     short_sha = sha[:12]
 
-    # Count commits at the PR head the app binaries were stamped from
+    # Squash and rebase merges write new commits, leaving the certified head reachable only through the PR ref
+    if landed and not bash_check(f"git cat-file -e {sha}"):
+        bash(f"git fetch origin refs/pull/{landed.number}/head")
+
+    # Count commits at the certified head the app binaries were stamped from
     commit_count = int(bash_output(f"git rev-list --count {sha}").strip()) if channel != ReleaseChannel.STABLE else 0
 
     # Stable tags names by CalVer instead of the count, but its assets still carry the certified head's stamp
@@ -119,7 +132,7 @@ def main(
     )
 
     # Lay out the release notes scaffolding
-    heading = f"### Commit [{short_sha}](https://github.com/{settings.github_repository}/commit/{sha})"
+    heading = f"### Commit [{short_sha}](https://github.com/{repository}/commit/{sha})"
     blocks: list[str] = []
 
     # Compose the channel's tag, title, versions, and header
@@ -133,14 +146,15 @@ def main(
         case ReleaseChannel.DEV:
             tag = f"dev-{commit_count}"
 
-            pr_number, pr_title = re.findall(
-                r"Merge PR #(\d+): (.+)", bash_output(f"git log -1 --format=%B {head}").strip()
-            )[0]
-            title = f"dev build {commit_count} · PR #{pr_number}: {pr_title}"
-            blocks.append(
-                f"{heading} — [PR #{pr_number}: {pr_title}]"
-                f"(https://github.com/{settings.github_repository}/pull/{pr_number})"
-            )
+            if landed:
+                title = f"dev build {commit_count} · PR #{landed.number}: {landed.title}"
+                blocks.append(
+                    f"{heading} — [PR #{landed.number}: {landed.title}]"
+                    f"(https://github.com/{repository}/pull/{landed.number})"
+                )
+            else:
+                title = f"dev build {commit_count} · {short_sha}"
+                blocks.append(heading)
 
         case ReleaseChannel.STABLE:
             year_month = datetime.now(UTC).strftime("%Y.%m")
@@ -153,8 +167,6 @@ def main(
             blocks.append(heading)
 
     versions = stamped_app_versions(publish_config, release_plan, channel, asset_count)
-
-    repository = settings.github_repository
 
     # A published release at this tag is a re-run of the same run: notes rewrite only.
     # A leftover draft is a botched prior run: drafts are disposable, start over
@@ -253,6 +265,16 @@ def main(
     # Sweep the dev releases once the stable release is cut
     if channel == ReleaseChannel.STABLE:
         delete_releases_by_prefix("dev-", repository)
+
+
+def resolve_landed_pr(repository: str, head: str) -> LandedPr | None:
+    # The PR database, not the landing's commit shape or message, is the record of what landed
+    pulls = json.loads(bash_output(f"gh api repos/{repository}/commits/{head}/pulls"))
+    landed = [pull for pull in pulls if pull["merged"] and pull["merge_commit_sha"] == head]
+    if not landed:
+        return None
+    pull = max(landed, key=itemgetter("number"))
+    return LandedPr(str(pull["number"]), pull["title"], pull["head"]["sha"])
 
 
 def stamped_app_versions(

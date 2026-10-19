@@ -16,7 +16,7 @@ from github_actions_toolkit.publishing import (
     semver_dev_version,
 )
 from github_actions_toolkit.verbs import release as release_module
-from github_actions_toolkit.verbs.release import DigestEntry, ReleaseChannel
+from github_actions_toolkit.verbs.release import DigestEntry, LandedPr, ReleaseChannel
 
 MERGE_SHA = "654321abcdef0987654321abcdef0987654321"
 CERTIFIED_SHA = "abcdef1234567890abcdef1234567890abcdef12"
@@ -35,6 +35,32 @@ class FixedReturn:
 
     def __call__(self, *args: object, **kwargs: object) -> object:
         return self.value
+
+
+def merged_pr_payload() -> list[dict[str, object]]:
+    return [
+        {
+            "number": 5,
+            "title": "Earlier landing",
+            "merged": True,
+            "merge_commit_sha": "5" * 40,
+            "head": {"sha": "4" * 40},
+        },
+        {
+            "number": 6,
+            "title": "Abandoned attempt",
+            "merged": False,
+            "merge_commit_sha": None,
+            "head": {"sha": "3" * 40},
+        },
+        {
+            "number": PR_NUMBER,
+            "title": PR_TITLE,
+            "merged": True,
+            "merge_commit_sha": MERGE_SHA,
+            "head": {"sha": CERTIFIED_SHA},
+        },
+    ]
 
 
 class CallRecorder:
@@ -157,6 +183,7 @@ def patch_context(
     monkeypatch: pytest.MonkeyPatch,
     config: PublishConfig,
     is_draft: bool = False,
+    pulls: list[dict[str, object]] | None = None,
 ) -> FakePullArtifact:
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
     monkeypatch.setenv("GITHUB_ACTOR", "bot")
@@ -170,12 +197,10 @@ def patch_context(
     def dispatching_bash_output(command: str) -> str:
         if command == "git rev-parse HEAD":
             return MERGE_SHA
-        if command == f"git rev-list --count {CERTIFIED_SHA}":
+        if command.startswith("git rev-list --count"):
             return str(COMMIT_COUNT)
-        if "%P" in command:
-            return f"{MERGE_SHA} {CERTIFIED_SHA}\n"
-        if command.startswith("git log"):
-            return f"Merge PR #{PR_NUMBER}: {PR_TITLE}\n"
+        if command.startswith("gh api repos/") and command.endswith("/pulls"):
+            return json.dumps(pulls if pulls is not None else merged_pr_payload())
         if command.startswith("gh api /orgs/"):
             return "[]"
         if command.endswith("--json isDraft"):
@@ -499,33 +524,94 @@ def test_resolve_publish_versions_spells_co_publishing_siblings_with_the_run_cou
     assert dependency_versions == {"co-id": "1.2.0.dev1563", "settled-id": "2.0.0"}
 
 
-def run_merge_identity(monkeypatch: pytest.MonkeyPatch, parents_output: str) -> FakePullArtifact:
+def test_resolve_landed_pr_matches_the_merge_commit_and_ignores_other_pulls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(release_module, "bash_output", FixedReturn(json.dumps(merged_pr_payload())))
+
+    landed = release_module.resolve_landed_pr("owner/repo", MERGE_SHA)
+
+    assert landed == LandedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)
+
+
+def test_resolve_landed_pr_returns_none_when_nothing_landed_here(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(release_module, "bash_output", FixedReturn("[]"))
+
+    assert release_module.resolve_landed_pr("owner/repo", MERGE_SHA) is None
+
+
+def test_dev_release_stages_from_the_landed_prs_certified_head(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(apps={"myapp": make_app()})
-    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
-    patch_plan_tags(monkeypatch, FakeTags(versions={"myapp": "1.0.0"}, changed=set()))
-    pull_artifact = patch_context(monkeypatch, config)
+    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
 
-    original_output = release_module.bash_output
-
-    def dispatching_bash_output(command: str) -> str:
-        if "%P" in command:
-            return parents_output
-        return str(original_output(command))
-
-    monkeypatch.setattr(release_module, "bash_output", dispatching_bash_output)
-
-    release_module.main(channel=ReleaseChannel.DEV)
-
-    return pull_artifact
-
-
-def test_merge_identity_resolves_the_second_parent(monkeypatch: pytest.MonkeyPatch) -> None:
-    pull_artifact = run_merge_identity(monkeypatch, f"{MERGE_SHA} {CERTIFIED_SHA}\n")
+    _, _, pull_artifact, _ = run_dev_release(monkeypatch, config, make_plan(set()), tags)
 
     assert pull_artifact.calls
     assert all(call[3] == f"sha-{CERTIFIED_SHA}" for call in pull_artifact.calls)
 
 
-def test_merge_identity_raises_on_non_merge(monkeypatch: pytest.MonkeyPatch) -> None:
-    with pytest.raises(IndexError):
-        run_merge_identity(monkeypatch, f"{MERGE_SHA}\n")
+def test_landing_without_a_pr_degrades_to_head_facts(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = make_config(apps={"myapp": make_app()})
+    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
+
+    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
+    patch_plan_tags(monkeypatch, tags)
+    pull_artifact = patch_context(monkeypatch, config, pulls=[])
+    patch_publish_internals(monkeypatch)
+    bash_log = CallRecorder()
+    written: list[str] = []
+
+    def capturing_bash(command: str) -> None:
+        bash_log.calls.append((command,))
+        if "--notes-file" in command:
+            path = command.split("--notes-file", 1)[1].strip().split()[0]
+            written.append(Path(path).read_text(encoding="utf-8"))
+
+    monkeypatch.setattr(release_module, "bash", capturing_bash)
+
+    release_module.main(channel=ReleaseChannel.DEV)
+
+    commands = [call[0] for call in bash_log.calls if isinstance(call[0], str)]
+    create = next(command for command in commands if "gh release create" in command)
+    assert f"dev build {COMMIT_COUNT} · {MERGE_SHA[:12]}" in create
+    assert "PR #" not in written[0]
+    assert all(call[3] == f"sha-{MERGE_SHA}" for call in pull_artifact.calls)
+
+
+def test_certified_head_outside_the_clone_is_fetched_from_the_pr_ref(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = make_config(apps={"myapp": make_app()})
+    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
+
+    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
+    patch_plan_tags(monkeypatch, tags)
+    patch_context(monkeypatch, config)
+    patch_publish_internals(monkeypatch)
+    bash_log = CallRecorder()
+    monkeypatch.setattr(release_module, "bash", bash_log)
+
+    release_module.main(channel=ReleaseChannel.DEV)
+
+    commands = [call[0] for call in bash_log.calls if isinstance(call[0], str)]
+    assert any(command == f"git fetch origin refs/pull/{PR_NUMBER}/head" for command in commands)
+
+
+def test_certified_head_already_in_the_clone_fetches_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = make_config(apps={"myapp": make_app()})
+    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
+
+    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
+    patch_plan_tags(monkeypatch, tags)
+    patch_context(monkeypatch, config)
+    patch_publish_internals(monkeypatch)
+
+    def dispatching_bash_check(command: str) -> bool:
+        return command.startswith("git cat-file")
+
+    monkeypatch.setattr(release_module, "bash_check", dispatching_bash_check)
+    bash_log = CallRecorder()
+    monkeypatch.setattr(release_module, "bash", bash_log)
+
+    release_module.main(channel=ReleaseChannel.DEV)
+
+    commands = [call[0] for call in bash_log.calls if isinstance(call[0], str)]
+    assert not any("git fetch" in command for command in commands)
