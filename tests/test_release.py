@@ -77,7 +77,7 @@ def patch_stable_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig)
                 {
                     "number": 3,
                     "title": "Stable landing",
-                    "merged": True,
+                    "merged_at": "2026-10-19T21:31:29Z",
                     "merge_commit_sha": HEAD_SHA,
                     "head": {"sha": CERTIFIED_SHA},
                 }

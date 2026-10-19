@@ -270,7 +270,7 @@ def main(
 def resolve_landed_pr(repository: str, head: str) -> LandedPr | None:
     # The PR database, not the landing's commit shape or message, is the record of what landed
     pulls = json.loads(bash_output(f"gh api repos/{repository}/commits/{head}/pulls"))
-    landed = [pull for pull in pulls if pull["merged"] and pull["merge_commit_sha"] == head]
+    landed = [pull for pull in pulls if pull["merged_at"] is not None and pull["merge_commit_sha"] == head]
     if not landed:
         return None
     pull = max(landed, key=itemgetter("number"))
