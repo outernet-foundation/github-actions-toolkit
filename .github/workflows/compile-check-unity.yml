@@ -56,10 +56,12 @@ jobs:
       - run: >-
           uv run --locked compile-check-unity
           --project "$PROJECT"
+          --pr-number "$PR_NUMBER"
           --license-cache-key "$LICENSE_CACHE_KEY"
           --registry "$REGISTRY"
         env:
           PROJECT: ${{ matrix.project }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           LICENSE_CACHE_KEY: ${{ needs.plan-unity-compile-checks.outputs.license-cache-key }}
           UNITY_EMAIL: ${{ secrets.unity-email }}
           UNITY_PASSWORD: ${{ secrets.unity-password }}
