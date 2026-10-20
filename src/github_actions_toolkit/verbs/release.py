@@ -193,7 +193,7 @@ def main(
             blocks.append(f"## Packages\n{markdown_table(['Package', 'Registry', 'Version'], packages_rows)}")
 
     # Stage every app's build artifacts as release assets on the draft
-    shelf = f"ghcr.io/{repository}/builds"
+    shelf = f"ghcr.io/{repository.lower()}/builds"
     if not rerun and publish_config.apps:
         stage_apps(settings, publish_config, shelf, release_plan, channel, sha, commit_count, tag, repository)
 
@@ -226,10 +226,11 @@ def main(
         if images:
             images_rows: list[list[str]] = []
             for entry in sorted(images.values(), key=lambda entry: entry.ref):
-                # Strip the repository namespace every ref must live under
-                repository_prefix = f"ghcr.io/{repository}/"
+                # Strip the repository namespace every ref must live under; ghcr
+                # stores every path lowercase, so the prefix must match that form
+                repository_prefix = f"ghcr.io/{repository.lower()}/"
                 if not entry.ref.startswith(repository_prefix):
-                    raise ValueError(f"image ref '{entry.ref}' does not live under ghcr.io/{repository}")
+                    raise ValueError(f"image ref '{entry.ref}' does not live under {repository_prefix.rstrip('/')}")
                 display_name = entry.ref[len(repository_prefix) :]
 
                 # Link the tree- tag to that exact package version's page
