@@ -35,7 +35,7 @@ from github_actions_toolkit.plan import (
     get_latest_version,
 )
 from github_actions_toolkit.publishing import build_registries
-from github_actions_toolkit.releases import delete_releases_by_prefix
+from github_actions_toolkit.releases import delete_releases_by_prefix, sweep_superseded_pr_releases
 
 DIGEST_PROJECT = "images-digests"
 DIGEST_PLATFORM = "all"
@@ -262,6 +262,10 @@ def main(
         summary_lines += [f"- [{name}]({url})" for name, url in sorted(download_urls.items())]
         with open(summary_path, "a", encoding="utf-8") as file:
             file.write("\n".join(summary_lines) + "\n")
+
+    # Sweep the PR's superseded builds once this run's prerelease is complete
+    if channel == ReleaseChannel.PR:
+        sweep_superseded_pr_releases(tag, repository)
 
     # Sweep the dev releases once the stable release is cut
     if channel == ReleaseChannel.STABLE:

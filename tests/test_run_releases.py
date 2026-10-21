@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from github_actions_toolkit import plan as plan_module
+from github_actions_toolkit import releases as releases_module
 from github_actions_toolkit.config import AppConfig, BuildArtifactConfig, PublishConfig
 from github_actions_toolkit.plan import ReleasePlan
 from github_actions_toolkit.verbs import release as release_module
@@ -35,6 +36,14 @@ class FixedReturn:
 
     def __call__(self, *args: object, **kwargs: object) -> object:
         return self.value
+
+
+class CallRecorder:
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, ...]] = []
+
+    def __call__(self, *args: object, **kwargs: object) -> None:
+        self.calls.append(args)
 
 
 class FakeTags:
@@ -125,6 +134,7 @@ def patch_context(
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     monkeypatch.setattr(release_module, "load_config", FixedReturn(publish_config))
     monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(ReleasePlan.empty()))
+    monkeypatch.setattr(release_module, "sweep_superseded_pr_releases", FixedReturn(None))
 
 
 def patch_bash(monkeypatch: pytest.MonkeyPatch, check_returns: object = False) -> BashLog:
@@ -275,6 +285,40 @@ def test_leftover_draft_from_botched_run_is_replaced(monkeypatch: pytest.MonkeyP
     )
     create_index = next(index for index, command in enumerate(bash_log.commands) if "gh release create" in command)
     assert delete_index < create_index
+
+
+def test_sweeps_superseded_builds_after_notes(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_context(monkeypatch, make_build_config())
+    patch_plan_tags(monkeypatch, FakeTags(versions={"myapp": "1.0.0"}, changed={"myapp"}))
+    patch_pull_artifact(monkeypatch, {("MyApp", "AndroidMobile"): {"MyApp.apk": "build content"}})
+    patch_pr_bash_output(monkeypatch)
+    bash_log = patch_bash(monkeypatch, check_returns=False)
+    sweep_events: list[tuple[int, tuple[object, ...]]] = []
+
+    def recording_sweep(*args: object) -> None:
+        sweep_events.append((len(bash_log.commands), args))
+
+    monkeypatch.setattr(release_module, "sweep_superseded_pr_releases", recording_sweep)
+
+    release_module.main(channel=ReleaseChannel.PR)
+
+    notes_index = next(index for index, command in enumerate(bash_log.commands) if "--notes-file" in command)
+    assert sweep_events == [(len(bash_log.commands), (RELEASE_TAG, REPOSITORY))]
+    assert sweep_events[0][0] > notes_index
+
+
+def test_rerun_still_sweeps_superseded_builds(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_context(monkeypatch, make_build_config())
+    patch_plan_tags(monkeypatch, FakeTags(versions={"myapp": "1.0.0"}, changed={"myapp"}))
+    patch_pull_artifact(monkeypatch, {("MyApp", "AndroidMobile"): {"MyApp.apk": "build content"}})
+    patch_pr_bash_output(monkeypatch, is_draft=False)
+    patch_bash(monkeypatch, check_returns=True)
+    sweep_recorder = CallRecorder()
+    monkeypatch.setattr(release_module, "sweep_superseded_pr_releases", sweep_recorder)
+
+    release_module.main(channel=ReleaseChannel.PR)
+
+    assert sweep_recorder.calls == [(RELEASE_TAG, REPOSITORY)]
 
 
 def test_appends_run_summary_when_env_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -559,3 +603,48 @@ def test_delete_releases_by_prefix_noop_without_matches(monkeypatch: pytest.Monk
     releases_module.delete_releases_by_prefix("pr-7-", REPOSITORY)
 
     assert bash_log.commands == []
+
+
+def test_sweep_superseded_pr_releases_deletes_lower_counts_of_same_pr(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        releases_module,
+        "bash_output",
+        FixedReturn(
+            json.dumps([
+                {"tagName": "pr-7-998"},
+                {"tagName": "pr-7-999"},
+                {"tagName": "pr-7-1000"},
+                {"tagName": "pr-7-1001"},
+                {"tagName": "pr-8-999"},
+                {"tagName": "dev-1000"},
+            ])
+        ),
+    )
+    bash_log = BashLog()
+    monkeypatch.setattr(releases_module, "bash", bash_log)
+
+    releases_module.sweep_superseded_pr_releases("pr-7-1000", REPOSITORY)
+
+    assert bash_log.commands == [
+        f"gh release delete pr-7-998 --cleanup-tag --yes --repo {REPOSITORY}",
+        f"gh release delete pr-7-999 --cleanup-tag --yes --repo {REPOSITORY}",
+    ]
+
+
+def test_sweep_superseded_pr_releases_noop_without_older_builds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        releases_module,
+        "bash_output",
+        FixedReturn(json.dumps([{"tagName": "pr-7-1000"}, {"tagName": "pr-7-1001"}, {"tagName": "dev-1000"}])),
+    )
+    bash_log = BashLog()
+    monkeypatch.setattr(releases_module, "bash", bash_log)
+
+    releases_module.sweep_superseded_pr_releases("pr-7-1000", REPOSITORY)
+
+    assert bash_log.commands == []
+
+
+def test_sweep_superseded_pr_releases_rejects_non_pr_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValueError, match="per-run PR release tag"):
+        releases_module.sweep_superseded_pr_releases("dev-1000", REPOSITORY)
