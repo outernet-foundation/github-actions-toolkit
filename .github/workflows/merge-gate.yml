@@ -32,6 +32,7 @@ jobs:
           private-key: ${{ secrets.merge-bot-private-key }}
           permission-contents: write
           permission-pull-requests: read
+          permission-checks: read
       - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev merge-gate --head-sha ${{ github.event.pull_request.head.sha }}
         env:
           GITHUB_TOKEN: ${{ steps.mint.outputs.token }}
