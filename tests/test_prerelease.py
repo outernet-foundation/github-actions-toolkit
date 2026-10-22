@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from subprocess import CalledProcessError
 
 import pytest
 
@@ -71,6 +72,19 @@ class CallRecorder:
     def __call__(self, *args: object, **kwargs: object) -> object:
         self.calls.append(args)
         return self.return_value
+
+
+class FailsThenSucceeds:
+    def __init__(self, failures: int, value: str) -> None:
+        self.failures = failures
+        self.value = value
+        self.calls = 0
+
+    def __call__(self, command: str) -> str:
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise CalledProcessError(1, command, output="", stderr="unexpected end of JSON input")
+        return self.value
 
 
 class FakeTags:
@@ -538,6 +552,32 @@ def test_resolve_landed_pr_returns_none_when_nothing_landed_here(monkeypatch: py
     monkeypatch.setattr(release_module, "bash_output", FixedReturn("[]"))
 
     assert release_module.resolve_landed_pr("owner/repo", MERGE_SHA) is None
+
+
+def test_resolve_landed_pr_retries_a_transient_api_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    bash_output = FailsThenSucceeds(1, json.dumps(merged_pr_payload()))
+    monkeypatch.setattr(release_module, "bash_output", bash_output)
+    sleeps = CallRecorder()
+    monkeypatch.setattr(release_module, "sleep", sleeps)
+
+    landed = release_module.resolve_landed_pr("owner/repo", MERGE_SHA)
+
+    assert landed == LandedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)
+    assert bash_output.calls == 2
+    assert len(sleeps.calls) == 1
+
+
+def test_resolve_landed_pr_fails_loudly_once_retries_are_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
+    bash_output = FailsThenSucceeds(99, "[]")
+    monkeypatch.setattr(release_module, "bash_output", bash_output)
+    sleeps = CallRecorder()
+    monkeypatch.setattr(release_module, "sleep", sleeps)
+
+    with pytest.raises(CalledProcessError):
+        release_module.resolve_landed_pr("owner/repo", MERGE_SHA)
+
+    assert bash_output.calls == 3
+    assert len(sleeps.calls) == 2
 
 
 def test_dev_release_stages_from_the_landed_prs_certified_head(monkeypatch: pytest.MonkeyPatch) -> None:

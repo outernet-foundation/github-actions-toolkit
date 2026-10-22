@@ -12,6 +12,7 @@ from operator import itemgetter
 from pathlib import Path
 from subprocess import CalledProcessError
 from tempfile import NamedTemporaryFile, mkdtemp
+from time import sleep
 from typing import Annotated, NamedTuple, Self
 
 import typer
@@ -274,12 +275,24 @@ def main(
 
 def resolve_landed_pr(repository: str, head: str) -> LandedPr | None:
     # The PR database, not the landing's commit shape or message, is the record of what landed
-    pulls = json.loads(bash_output(f"gh api repos/{repository}/commits/{head}/pulls"))
+    pulls = json.loads(bash_output_with_retry(f"gh api repos/{repository}/commits/{head}/pulls"))
     landed = [pull for pull in pulls if pull["merged_at"] is not None and pull["merge_commit_sha"] == head]
     if not landed:
         return None
     pull = max(landed, key=itemgetter("number"))
     return LandedPr(str(pull["number"]), pull["title"], pull["head"]["sha"])
+
+
+def bash_output_with_retry(command: str, attempts: int = 3, backoff_seconds: float = 5.0) -> str:
+    # gh hides the HTTP status behind an empty-body 5xx (cli/cli#10579), so every failure reads as potentially transient
+    for attempt in range(1, attempts):
+        try:
+            return bash_output(command)
+        except CalledProcessError:
+            wait_seconds = backoff_seconds * 2 ** (attempt - 1)
+            print(f"{command} failed on attempt {attempt} of {attempts}, retrying in {wait_seconds:.0f}s")
+            sleep(wait_seconds)
+    return bash_output(command)
 
 
 def stamped_app_versions(
