@@ -8,7 +8,7 @@ import typer
 from bashrun.bash import bash, bash_check, bash_output
 from build_artifact_registry.cache import promote_scope
 from build_artifact_registry.setup_oras import install_oras
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
 from github_actions_toolkit.config import Settings
 from github_actions_toolkit.releases import delete_releases_by_prefix
@@ -34,6 +34,16 @@ class CheckEntry(BaseModel):
     status: str | None = None
     conclusion: str | None = None
 
+    @field_validator("status", "conclusion", mode="before")
+    @classmethod
+    def normalize_case(cls, value: object) -> object:
+        return value.upper() if isinstance(value, str) else value
+
+
+class CheckRunsPage(BaseModel):
+    total_count: int
+    check_runs: list[CheckEntry]
+
 
 class PullRequestRef(BaseModel):
     number: int
@@ -47,10 +57,10 @@ class PullRequest(BaseModel):
     title: str
     head_oid: str = Field(alias="headRefOid")
     labels: list[LabelEntry]
-    check_rollup: list[CheckEntry] = Field(alias="statusCheckRollup")
 
 
 PULL_REQUEST_REFS = TypeAdapter(list[PullRequestRef])
+CHECK_RUNS_PAGES = TypeAdapter(list[CheckRunsPage])
 
 
 @app.command()
@@ -68,17 +78,26 @@ def main(
     if pr_number is None:
         return
     pull_request = PullRequest.model_validate_json(
-        bash_output(f"gh pr view {pr_number} --json state,title,headRefOid,labels,statusCheckRollup")
+        bash_output(f"gh pr view {pr_number} --json state,title,headRefOid,labels")
     )
+    pages = CHECK_RUNS_PAGES.validate_json(
+        bash_output(f"gh api repos/{repository}/commits/{pull_request.head_oid}/check-runs --paginate --slurp")
+    )
+    check_runs = [entry for page in pages for entry in page.check_runs]
+    if len(check_runs) != pages[0].total_count:
+        raise SystemExit(
+            f"check-runs pagination incomplete for {pull_request.head_oid[:12]}: "
+            f"{len(check_runs)} of {pages[0].total_count} entries"
+        )
     if dry_run:
-        report_dry_run(head_sha, pr_number, pull_request)
+        report_dry_run(head_sha, pr_number, pull_request, check_runs)
         return
     if pull_request.state != "OPEN":
         raise SystemExit(f"PR is {pull_request.state}, not OPEN — refusing to merge")
     if LABEL_NAME not in {label.name for label in pull_request.labels}:
         raise SystemExit(f"label {LABEL_NAME} absent — refusing to merge")
 
-    battery = merge_battery(pull_request)
+    battery = merge_battery(check_runs)
     blocking = [entry for entry in battery if entry.status != "COMPLETED" or entry.conclusion not in GREEN_CONCLUSIONS]
     if blocking:
         if all(entry.status in WAITING_STATUSES for entry in blocking):
@@ -128,11 +147,11 @@ def resolve_pr_number(head_sha: str, dry_run: bool) -> str | None:
     return str(matches[0])
 
 
-def report_dry_run(head_sha: str, pr_number: str, pull_request: PullRequest) -> None:
+def report_dry_run(head_sha: str, pr_number: str, pull_request: PullRequest, check_runs: list[CheckEntry]) -> None:
     print(f"  PR #{pr_number} state {pull_request.state}")
     label_present = LABEL_NAME in {label.name for label in pull_request.labels}
     print(f"  label {LABEL_NAME} {'present' if label_present else 'absent — apply the label to attempt the merge'}")
-    battery = merge_battery(pull_request)
+    battery = merge_battery(check_runs)
     blocking = [entry for entry in battery if entry.status != "COMPLETED" or entry.conclusion not in GREEN_CONCLUSIONS]
     if not blocking:
         print(f"  {len(battery)} checks green on {pull_request.head_oid[:12]}")
@@ -157,10 +176,10 @@ def report_dry_run(head_sha: str, pr_number: str, pull_request: PullRequest) -> 
 # The gate's own check reports as the bare job name from local-job gates and as
 # "caller / merge-gate" through a reusable caller; it stays out of the battery
 # because the run evaluating the battery is itself in progress.
-def merge_battery(pull_request: PullRequest) -> list[CheckEntry]:
+def merge_battery(check_runs: list[CheckEntry]) -> list[CheckEntry]:
     return [
         entry
-        for entry in pull_request.check_rollup
+        for entry in check_runs
         if entry.name != GATE_CHECK_NAME and not entry.name.endswith(f" / {GATE_CHECK_NAME}")
     ]
 
