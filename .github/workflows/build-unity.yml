@@ -18,6 +18,18 @@ on:
       unity-serial:
         description: Unity license serial
         required: true
+      android-keystore:
+        description: Base64-encoded Android signing keystore for player builds
+        required: true
+      android-keystore-password:
+        description: Password of the Android signing keystore
+        required: true
+      android-key-alias:
+        description: Key alias inside the Android signing keystore
+        required: true
+      android-key-password:
+        description: Password of the Android signing key alias
+        required: true
 
 env:
   PYTHONUNBUFFERED: "1"
@@ -59,6 +71,11 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: $/.github/actions/setup-uv
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Materialize Android keystore
+        run: test -z "$ANDROID_KEYSTORE" && exit 0; printf '%s' "$ANDROID_KEYSTORE" | base64 -d > "$KEYSTORE_PATH"
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.android-keystore }}
+          KEYSTORE_PATH: ${{ runner.temp }}/android-signing.keystore
       - run: >-
           uv run --locked build-unity
           --project "$PROJECT"
@@ -78,6 +95,10 @@ jobs:
           UNITY_EMAIL: ${{ secrets.unity-email }}
           UNITY_PASSWORD: ${{ secrets.unity-password }}
           UNITY_SERIAL: ${{ secrets.unity-serial }}
+          KEYSTORE_PATH: ${{ runner.temp }}/android-signing.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.android-keystore-password }}
+          KEYSTORE_ALIAS: ${{ secrets.android-key-alias }}
+          KEYSTORE_ALIAS_PASSWORD: ${{ secrets.android-key-password }}
           REGISTRY: ghcr.io/${{ github.repository }}
           REGISTRY_TOKEN: ${{ github.token }}
           REGISTRY_USERNAME: ${{ github.actor }}
