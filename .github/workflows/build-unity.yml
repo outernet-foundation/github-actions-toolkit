@@ -8,6 +8,11 @@ on:
         required: false
         default: '["ubuntu-latest"]'
         type: string
+      unity-environment:
+        description: Environment preset name applied by playerbuild; empty leaves the workspace untouched
+        required: false
+        default: ''
+        type: string
     secrets:
       unity-email:
         description: Unity license email
@@ -84,6 +89,7 @@ jobs:
           --pr-number "$PR_NUMBER"
           --commit-count "$COMMIT_COUNT"
           --license-cache-key "$LICENSE_CACHE_KEY"
+          --environment-preset "$UNITY_ENVIRONMENT"
           --registry "$REGISTRY"
         env:
           PROJECT: ${{ matrix.project }}
@@ -92,6 +98,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           COMMIT_COUNT: ${{ needs.plan-unity-builds.outputs.commit-count }}
           LICENSE_CACHE_KEY: ${{ needs.plan-unity-builds.outputs.license-cache-key }}
+          UNITY_ENVIRONMENT: ${{ inputs.unity-environment }}
           UNITY_EMAIL: ${{ secrets.unity-email }}
           UNITY_PASSWORD: ${{ secrets.unity-password }}
           UNITY_SERIAL: ${{ secrets.unity-serial }}
