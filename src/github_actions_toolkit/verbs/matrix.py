@@ -24,6 +24,12 @@ def main(
         str, typer.Option(help="Output key the envelope lands under (job output name at the call site)")
     ] = OUTPUT_KEY,
     config: Annotated[Path, typer.Option(help="Publish configuration YAML")] = DEFAULT_CONFIG_PATH,
+    allow_empty: Annotated[
+        bool,
+        typer.Option(
+            "--allow-empty", help="Emit an empty envelope for an empty leg list instead of failing (gated fanouts)"
+        ),
+    ] = False,
 ) -> None:
     try:
         document = json.load(sys.stdin)
@@ -33,7 +39,7 @@ def main(
         legs = LEGS.validate_python(document)
     except ValidationError as error:
         raise SystemExit(f"stdin must be a JSON array of leg objects: {error}") from error
-    if not legs:
+    if not legs and not allow_empty:
         raise SystemExit("empty leg list — refusing to emit an empty matrix envelope")
     publish_config = load_config(config)
     owners = owning_apps_by_project(publish_config)

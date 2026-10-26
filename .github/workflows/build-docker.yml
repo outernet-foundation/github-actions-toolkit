@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      compose-matrix: ${{ steps.compose-matrix.outputs.compose-matrix }}
     steps:
       - uses: $/.github/actions/toolkit-checkout
       - uses: $/.github/actions/consumer-checkout
@@ -25,6 +26,8 @@ jobs:
       - uses: $/.github/actions/setup-uv
       - id: matrix
         run: uv run --locked docker-build-matrix | uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev matrix
+      - id: compose-matrix
+        run: uv run --locked publish-compose --plan | uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev matrix --key compose-matrix --allow-empty
 
   build-docker:
     needs: [plan-docker-builds]
@@ -56,3 +59,18 @@ jobs:
           REGISTRY: ghcr.io/${{ github.repository }}
           REGISTRY_TOKEN: ${{ github.token }}
           REGISTRY_USERNAME: ${{ github.actor }}
+
+  publish-compose:
+    needs: [plan-docker-builds, build-docker]
+    if: fromJSON(needs.plan-docker-builds.outputs.compose-matrix).include[0] != null
+    runs-on: ubuntu-latest
+    steps:
+      - uses: $/.github/actions/consumer-checkout
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: $/.github/actions/setup-uv
+      - run: uv run --locked publish-compose --branch "$BRANCH_NAME"
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ github.token }}

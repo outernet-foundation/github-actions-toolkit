@@ -45,6 +45,7 @@ def invoke(
     stdin: str,
     tags: dict[str, str] | None = None,
     config_path: Path | None = None,
+    args: list[str] | None = None,
 ) -> tuple[Result, str]:
     monkeypatch.setattr("github_actions_toolkit.plan.bash_output", TagRecorder(outputs=tags or {}))
     output_file = tmp_path / "github-output"
@@ -52,7 +53,7 @@ def invoke(
     monkeypatch.setenv("GITHUB_OUTPUT", str(output_file))
     if config_path is None:
         config_path = write_config(tmp_path)
-    result = CliRunner().invoke(app, ["--config", str(config_path)], input=stdin)
+    result = CliRunner().invoke(app, ["--config", str(config_path), *(args or [])], input=stdin)
     return result, output_file.read_text(encoding="utf-8")
 
 
@@ -199,6 +200,28 @@ def test_empty_leg_list_fails_loudly(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     result, _ = invoke(monkeypatch, tmp_path, "[]")
 
     assert result.exit_code != 0
+
+
+def test_allow_empty_emits_empty_envelope(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    result, output = invoke(monkeypatch, tmp_path, "[]", args=["--allow-empty"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(output.removeprefix("matrix=")) == {"include": []}
+
+
+def test_allow_empty_leaves_non_empty_legs_untouched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    empty_config = tmp_path / "publish.yml"
+    empty_config.write_text("", encoding="utf-8")
+    result, output = invoke(
+        monkeypatch,
+        tmp_path,
+        '[{"targets": "player", "variant": "common"}]',
+        config_path=empty_config,
+        args=["--allow-empty"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert single_leg(output) == {"targets": "player", "variant": "common"}
 
 
 def test_non_object_leg_fails_loudly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
