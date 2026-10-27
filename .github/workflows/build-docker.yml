@@ -25,12 +25,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: $/.github/actions/setup-uv
       - id: matrix
-        run: uv run --locked docker-build-matrix | uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev matrix
+        run: uv run --locked docker-build-matrix | uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev matrix --allow-empty
       - id: compose-matrix
         run: uv run --locked publish-compose --plan | uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev matrix --key compose-matrix --allow-empty
 
   build-docker:
     needs: [plan-docker-builds]
+    if: fromJSON(needs.plan-docker-builds.outputs.matrix).include[0] != null
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -62,7 +63,7 @@ jobs:
 
   publish-compose:
     needs: [plan-docker-builds, build-docker]
-    if: fromJSON(needs.plan-docker-builds.outputs.compose-matrix).include[0] != null
+    if: ${{ !cancelled() && !failure() && fromJSON(needs.plan-docker-builds.outputs.compose-matrix).include[0] != null }}
     runs-on: ubuntu-latest
     steps:
       - uses: $/.github/actions/consumer-checkout
