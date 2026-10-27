@@ -224,6 +224,31 @@ def test_allow_empty_leaves_non_empty_legs_untouched(monkeypatch: pytest.MonkeyP
     assert single_leg(output) == {"targets": "player", "variant": "common"}
 
 
+def test_allow_empty_needs_no_release_plan(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    result, output = invoke(monkeypatch, tmp_path, "[]", config_path=tmp_path / "absent.yml", args=["--allow-empty"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(output.removeprefix("matrix=")) == {"include": []}
+
+
+def test_docker_legs_need_no_release_plan(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    result, output = invoke(
+        monkeypatch,
+        tmp_path,
+        '[{"targets": "player", "variant": "common"}]',
+        config_path=tmp_path / "absent.yml",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert single_leg(output) == {"targets": "player", "variant": "common"}
+
+
+def test_project_leg_without_a_release_plan_fails_loudly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    result, _ = invoke(monkeypatch, tmp_path, '[{"project": "CaptureTool"}]', config_path=tmp_path / "absent.yml")
+
+    assert result.exit_code != 0
+
+
 def test_non_object_leg_fails_loudly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     result, _ = invoke(monkeypatch, tmp_path, '["app"]')
 

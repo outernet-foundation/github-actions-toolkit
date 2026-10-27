@@ -41,21 +41,24 @@ def main(
         raise SystemExit(f"stdin must be a JSON array of leg objects: {error}") from error
     if not legs and not allow_empty:
         raise SystemExit("empty leg list — refusing to emit an empty matrix envelope")
-    publish_config = load_config(config)
-    owners = owning_apps_by_project(publish_config)
-    base_versions: dict[str, str] = {}
-    for leg in legs:
-        project = leg.get("project")
-        if project is None:
-            continue
-        if not isinstance(project, str):
-            raise SystemExit(f"leg 'project' must be a string, got '{project}'")
-        application = owners.get(project)
-        if application is None:
-            continue
-        if application not in base_versions:
-            base_versions[application] = app_base_version(publish_config.apps[application], application)
-        leg["version"] = base_versions[application]
+    # Version stamping is the release plan's only consumer; a repo with no releasable
+    # projects (docker legs, empty matrices) carries no publish.yml, so load it only
+    # when a project-carrying leg exists.
+    project_legs = [leg for leg in legs if "project" in leg]
+    if project_legs:
+        publish_config = load_config(config)
+        owners = owning_apps_by_project(publish_config)
+        base_versions: dict[str, str] = {}
+        for leg in project_legs:
+            project = leg["project"]
+            if not isinstance(project, str):
+                raise SystemExit(f"leg 'project' must be a string, got '{project}'")
+            application = owners.get(project)
+            if application is None:
+                continue
+            if application not in base_versions:
+                base_versions[application] = app_base_version(publish_config.apps[application], application)
+            leg["version"] = base_versions[application]
     envelope = json.dumps({"include": legs}, separators=(",", ":"))
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
