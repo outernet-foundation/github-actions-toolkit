@@ -402,9 +402,7 @@ def test_stages_all_apps_regardless_of_source_changes(monkeypatch: pytest.Monkey
 
 def test_any_new_digest_cuts_release_with_all_images(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
-    manifest_path = tmp_path / "workloads" / "images.yml"
-    manifest_path.parent.mkdir()
-    manifest_path.write_text("services: {}\n", encoding="utf-8")
+    (tmp_path / "docker-devkit.yaml").write_text("repository: ghcr.io/owner/repo\n", encoding="utf-8")
     config = make_config(apps={"myapp": make_app()})
     tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
 

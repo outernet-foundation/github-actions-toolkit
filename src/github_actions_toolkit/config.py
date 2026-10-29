@@ -1,13 +1,15 @@
 from pathlib import Path
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 from pydantic_settings import BaseSettings
 from strictyaml import load as load_strict_yaml
 
 DEFAULT_CONFIG_PATH = Path("publish.yml")
-IMAGE_MANIFEST_PATH = Path("workloads/images.yml")
+DOCKER_DEVKIT_CONFIG_PATH = Path("docker-devkit.yaml")
 KNOWN_REGISTRIES = frozenset({"nuget", "npm", "pypi"})
+DEVKIT_DOCUMENT = TypeAdapter(dict[object, object])
 
 
 class Settings(BaseSettings):
@@ -77,3 +79,17 @@ class PublishConfig(BaseModel):
 def load_config(path: Path) -> PublishConfig:
     data = load_strict_yaml(path.read_text(encoding="utf-8")).data
     return PublishConfig.model_validate(data if data else {})
+
+
+def built_images() -> bool:
+    # A presence probe over docker-devkit's root config, not schema consumption —
+    # importing docker-devkit here is a resolver cycle.
+    if not DOCKER_DEVKIT_CONFIG_PATH.is_file():
+        return False
+    document: object = yaml.safe_load(DOCKER_DEVKIT_CONFIG_PATH.read_text(encoding="utf-8"))
+    try:
+        declarations = DEVKIT_DOCUMENT.validate_python(document)
+    except ValidationError:
+        return False
+    repository = declarations.get("repository")
+    return isinstance(repository, str) and repository != ""

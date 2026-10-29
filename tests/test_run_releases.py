@@ -115,11 +115,9 @@ def make_build_config() -> PublishConfig:
     )
 
 
-def patch_image_manifest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def patch_built_images(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
-    manifest = tmp_path / "workloads" / "images.yml"
-    manifest.parent.mkdir()
-    manifest.write_text("services: {}\n", encoding="utf-8")
+    (tmp_path / "docker-devkit.yaml").write_text("repository: ghcr.io/owner/repo\n", encoding="utf-8")
 
 
 def patch_context(
@@ -352,7 +350,7 @@ def test_run_summary_is_optional(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_writes_image_section_when_manifest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     manifest = {"zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"])}
-    patch_image_manifest(monkeypatch, tmp_path)
+    patch_built_images(monkeypatch, tmp_path)
     patch_context(monkeypatch, make_build_config())
     patch_pull_artifact(
         monkeypatch, {("MyApp", "AndroidMobile"): {"MyApp.apk": "build content"}, **digest_layer(manifest)}
@@ -375,7 +373,7 @@ def test_writes_image_section_when_manifest(monkeypatch: pytest.MonkeyPatch, tmp
 def test_links_image_tag_to_exact_package_version(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     manifest = {"zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"])}
     api_versions = json.dumps([{"name": "sha256:zzz", "id": 1}, {"name": "sha256:abc", "id": 1369985695}])
-    patch_image_manifest(monkeypatch, tmp_path)
+    patch_built_images(monkeypatch, tmp_path)
     patch_context(monkeypatch, PublishConfig())
     patch_pull_artifact(monkeypatch, digest_layer(manifest))
     patch_pr_bash_output(monkeypatch, api_versions=api_versions)
@@ -396,7 +394,7 @@ def test_lists_images_alphabetically_by_ref(monkeypatch: pytest.MonkeyPatch, tmp
         "zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"]),
         "aoa-bridge": DigestEntry(ref="ghcr.io/owner/repo/aoa-bridge", digest="sha256:def", tags=["tree-2"]),
     }
-    patch_image_manifest(monkeypatch, tmp_path)
+    patch_built_images(monkeypatch, tmp_path)
     patch_context(monkeypatch, PublishConfig())
     patch_pull_artifact(monkeypatch, digest_layer(manifest))
     patch_pr_bash_output(monkeypatch)
@@ -425,7 +423,7 @@ def test_omits_images_when_not_declared(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_lists_images_without_any_apps(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     manifest = {"zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"])}
-    patch_image_manifest(monkeypatch, tmp_path)
+    patch_built_images(monkeypatch, tmp_path)
     config = PublishConfig(apps={})
     patch_context(monkeypatch, config)
     patch_pull_artifact(monkeypatch, digest_layer(manifest))
@@ -443,7 +441,7 @@ def test_lists_images_without_any_apps(monkeypatch: pytest.MonkeyPatch, tmp_path
 def test_merges_digest_shards(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     shard_a = {"zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"])}
     shard_b = {"aoa-bridge": DigestEntry(ref="ghcr.io/owner/repo/aoa-bridge", digest="sha256:def", tags=["tree-2"])}
-    patch_image_manifest(monkeypatch, tmp_path)
+    patch_built_images(monkeypatch, tmp_path)
     patch_context(monkeypatch, PublishConfig())
     patch_pull_artifact(
         monkeypatch,
@@ -471,7 +469,7 @@ def test_merges_digest_shards(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
 def test_fails_loudly_on_overlapping_shards(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     shard_a = {"zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"])}
     shard_b = {"zed-capture": DigestEntry(ref="ghcr.io/owner/repo/zed-capture", digest="sha256:abc", tags=["tree-1"])}
-    patch_image_manifest(monkeypatch, tmp_path)
+    patch_built_images(monkeypatch, tmp_path)
     patch_context(monkeypatch, PublishConfig())
     patch_pull_artifact(
         monkeypatch,
@@ -496,7 +494,7 @@ def test_fails_loudly_on_treeless_manifest_entry(monkeypatch: pytest.MonkeyPatch
     raw_manifest = {
         "zed-capture": {"ref": "ghcr.io/owner/repo/zed-capture", "digest": "sha256:abc", "tags": ["latest"]}
     }
-    patch_image_manifest(monkeypatch, tmp_path)
+    patch_built_images(monkeypatch, tmp_path)
     patch_context(monkeypatch, PublishConfig())
     patch_pull_artifact(monkeypatch, {("images-digests", "all"): {DIGEST_FILE_NAME: json.dumps(raw_manifest)}})
     patch_pr_bash_output(monkeypatch)
@@ -510,7 +508,7 @@ def test_fails_loudly_on_foreign_registry_ref(monkeypatch: pytest.MonkeyPatch, t
     raw_manifest = {
         "zed-capture": {"ref": "registry.example.com/owner/zed-capture", "digest": "sha256:abc", "tags": ["tree-1"]}
     }
-    patch_image_manifest(monkeypatch, tmp_path)
+    patch_built_images(monkeypatch, tmp_path)
     patch_context(monkeypatch, PublishConfig())
     patch_pull_artifact(monkeypatch, {("images-digests", "all"): {DIGEST_FILE_NAME: json.dumps(raw_manifest)}})
     patch_pr_bash_output(monkeypatch)

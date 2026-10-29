@@ -23,9 +23,9 @@ from pydantic import BaseModel, model_validator
 
 from github_actions_toolkit.config import (
     DEFAULT_CONFIG_PATH,
-    IMAGE_MANIFEST_PATH,
     PublishConfig,
     Settings,
+    built_images,
     load_config,
 )
 from github_actions_toolkit.plan import (
@@ -104,10 +104,10 @@ def main(
     # Stop a run with nothing to ship, before creating anything
     match channel:
         case ReleaseChannel.PR:
-            if not publish_config.apps and not IMAGE_MANIFEST_PATH.is_file():
+            if not publish_config.apps and not built_images():
                 return
         case ReleaseChannel.DEV:
-            if not release_plan.publishing and not publish_config.apps and not IMAGE_MANIFEST_PATH.is_file():
+            if not release_plan.publishing and not publish_config.apps and not built_images():
                 return
         case ReleaseChannel.STABLE:
             if not release_plan.publishing and not release_plan.app_versions:
@@ -221,8 +221,8 @@ def main(
         ]
         blocks.append(f"## Apps\n{markdown_table(['App', 'Platform', 'Version'], assets_rows)}")
 
-    # List the images built at this SHA from the shelf, declared by the image manifest's presence
-    if IMAGE_MANIFEST_PATH.is_file():
+    # List the images built at this SHA from the shelf, declared by a non-empty root repository
+    if built_images():
         images = pull_digest_manifest(settings, shelf, sha)
         if images:
             images_rows: list[list[str]] = []

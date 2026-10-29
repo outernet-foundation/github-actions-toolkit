@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from github_actions_toolkit.config import load_config
+from github_actions_toolkit.config import built_images, load_config
 
 
 def write_config(tmp_path: Path, payload: dict[str, object]) -> Path:
@@ -189,3 +189,41 @@ def test_load_config_rejects_built_images(tmp_path: Path):
 
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         load_config(write_config(tmp_path, payload))
+
+
+def write_devkit_config(tmp_path: Path, payload: str) -> None:
+    (tmp_path / "docker-devkit.yaml").write_text(payload, encoding="utf-8")
+
+
+def test_built_images_requires_a_devkit_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(tmp_path)
+
+    assert built_images() is False
+
+
+def test_built_images_reads_root_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(tmp_path)
+    write_devkit_config(tmp_path, 'requires: ">=0.5"\nrepository: ghcr.io/owner/repo\n')
+
+    assert built_images() is True
+
+
+def test_built_images_is_false_without_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(tmp_path)
+    write_devkit_config(tmp_path, 'requires: ">=0.5"\nbase_images:\n  ALPINE_IMAGE: docker.io/library/alpine:3.22\n')
+
+    assert built_images() is False
+
+
+def test_built_images_is_false_on_empty_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(tmp_path)
+    write_devkit_config(tmp_path, 'repository: ""\n')
+
+    assert built_images() is False
+
+
+def test_built_images_is_false_on_non_mapping_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(tmp_path)
+    write_devkit_config(tmp_path, "- one\n- two\n")
+
+    assert built_images() is False
