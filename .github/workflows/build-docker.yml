@@ -25,9 +25,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: $/.github/actions/setup-uv
       - run: uv run --locked generate-score --check
-      - run: |
-          uv run --locked build --lock-only
-          git diff --exit-code -- workloads/images.lock
+      - run: uv run --locked build --lock-only --check
       - id: matrix
         run: uv run --locked docker-build-matrix | uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev matrix --allow-empty
       - id: compose-matrix
