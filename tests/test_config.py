@@ -192,7 +192,7 @@ def test_load_config_rejects_built_images(tmp_path: Path):
 
 
 def write_devkit_config(tmp_path: Path, payload: str) -> None:
-    (tmp_path / "docker-devkit.yaml").write_text(payload, encoding="utf-8")
+    (tmp_path / "boatyard.yml").write_text(payload, encoding="utf-8")
 
 
 def test_built_images_requires_a_devkit_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

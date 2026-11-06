@@ -24,12 +24,12 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: $/.github/actions/setup-uv
-      - run: uv run --locked generate-score --check
-      - run: uv run --locked build --lock-only --check
+      - run: uv run --locked boatyard generate-score --check
+      - run: uv run --locked boatyard lock --check
       - id: matrix
-        run: uv run --locked docker-build-matrix | uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev matrix --allow-empty
+        run: uv run --locked boatyard docker-build-matrix | uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev matrix --allow-empty
       - id: compose-matrix
-        run: uv run --locked publish-compose --plan | uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev matrix --key compose-matrix --allow-empty
+        run: uv run --locked boatyard publish-compose --plan | uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev matrix --key compose-matrix --allow-empty
 
   build-docker:
     needs: [plan-docker-builds]
@@ -55,10 +55,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - run: uv run --locked build --push --targets "$TARGETS" --gpu "$GPU"
+      - run: uv run --locked boatyard build --push --targets "$TARGETS"
         env:
           TARGETS: ${{ matrix.targets }}
-          GPU: ${{ matrix.variant == 'common' && 'none' || matrix.variant }}
           REGISTRY: ghcr.io/${{ github.repository }}
           REGISTRY_TOKEN: ${{ github.token }}
           REGISTRY_USERNAME: ${{ github.actor }}
@@ -72,7 +71,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: $/.github/actions/setup-uv
-      - run: uv run --locked publish-compose --branch "$BRANCH_NAME"
+      - run: uv run --locked boatyard publish-compose --branch "$BRANCH_NAME"
         env:
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
           REGISTRY_USERNAME: ${{ github.actor }}

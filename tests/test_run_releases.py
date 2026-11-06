@@ -117,7 +117,7 @@ def make_build_config() -> PublishConfig:
 
 def patch_built_images(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "docker-devkit.yaml").write_text("repository: ghcr.io/owner/repo\n", encoding="utf-8")
+    (tmp_path / "boatyard.yml").write_text("repository: ghcr.io/owner/repo\n", encoding="utf-8")
 
 
 def patch_context(

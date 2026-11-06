@@ -21,4 +21,4 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - run: uv run --locked mirror
+      - run: uv run --locked boatyard mirror

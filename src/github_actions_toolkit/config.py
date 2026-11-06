@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings
 from strictyaml import load as load_strict_yaml
 
 DEFAULT_CONFIG_PATH = Path("publish.yml")
-DOCKER_DEVKIT_CONFIG_PATH = Path("docker-devkit.yaml")
+BOATYARD_CONFIG_PATH = Path("boatyard.yml")
 KNOWN_REGISTRIES = frozenset({"nuget", "npm", "pypi"})
 DEVKIT_DOCUMENT = TypeAdapter(dict[object, object])
 
@@ -82,11 +82,11 @@ def load_config(path: Path) -> PublishConfig:
 
 
 def built_images() -> bool:
-    # A presence probe over docker-devkit's root config, not schema consumption —
-    # importing docker-devkit here is a resolver cycle.
-    if not DOCKER_DEVKIT_CONFIG_PATH.is_file():
+    # A presence probe over boatyard's root config, not schema consumption —
+    # importing boatyard here is a resolver cycle.
+    if not BOATYARD_CONFIG_PATH.is_file():
         return False
-    document: object = yaml.safe_load(DOCKER_DEVKIT_CONFIG_PATH.read_text(encoding="utf-8"))
+    document: object = yaml.safe_load(BOATYARD_CONFIG_PATH.read_text(encoding="utf-8"))
     try:
         declarations = DEVKIT_DOCUMENT.validate_python(document)
     except ValidationError:
