@@ -30,7 +30,7 @@ jobs:
       pull-requests: read
       packages: write
     concurrency:
-      group: landing
+      group: merge
       queue: max
     uses: $/.github/workflows/merge-if-ready.yml
     with:

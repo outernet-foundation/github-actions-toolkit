@@ -17,7 +17,7 @@ from github_actions_toolkit.publishing import (
     semver_dev_version,
 )
 from github_actions_toolkit.verbs import release as release_module
-from github_actions_toolkit.verbs.release import DigestEntry, LandedPr, ReleaseChannel
+from github_actions_toolkit.verbs.release import DigestEntry, MergedPr, ReleaseChannel
 
 MERGE_SHA = "654321abcdef0987654321abcdef0987654321"
 CERTIFIED_SHA = "abcdef1234567890abcdef1234567890abcdef12"
@@ -43,7 +43,7 @@ def merged_pr_payload() -> list[dict[str, object]]:
     return [
         {
             "number": 5,
-            "title": "Earlier landing",
+            "title": "Earlier merge",
             "merged_at": "2026-10-18T18:00:00Z",
             "merge_commit_sha": "5" * 40,
             "head": {"sha": "4" * 40},
@@ -539,43 +539,43 @@ def test_resolve_publish_versions_spells_co_publishing_siblings_with_the_run_cou
     assert dependency_versions == {"co-id": "1.2.0.dev1563", "settled-id": "2.0.0"}
 
 
-def test_resolve_landed_pr_matches_the_merge_commit_and_ignores_other_pulls(
+def test_resolve_merged_pr_matches_the_merge_commit_and_ignores_other_pulls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(release_module, "bash_output", FixedReturn(json.dumps(merged_pr_payload())))
 
-    landed = release_module.resolve_landed_pr("owner/repo", MERGE_SHA)
+    merged_pr = release_module.resolve_merged_pr("owner/repo", MERGE_SHA)
 
-    assert landed == LandedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)
+    assert merged_pr == MergedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)
 
 
-def test_resolve_landed_pr_returns_none_when_nothing_landed_here(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_merged_pr_returns_none_when_nothing_merged_here(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(release_module, "bash_output", FixedReturn("[]"))
 
-    assert release_module.resolve_landed_pr("owner/repo", MERGE_SHA) is None
+    assert release_module.resolve_merged_pr("owner/repo", MERGE_SHA) is None
 
 
-def test_resolve_landed_pr_retries_a_transient_api_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_merged_pr_retries_a_transient_api_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     bash_output = FailsThenSucceeds(1, json.dumps(merged_pr_payload()))
     monkeypatch.setattr(release_module, "bash_output", bash_output)
     sleeps = CallRecorder()
     monkeypatch.setattr(release_module, "sleep", sleeps)
 
-    landed = release_module.resolve_landed_pr("owner/repo", MERGE_SHA)
+    merged_pr = release_module.resolve_merged_pr("owner/repo", MERGE_SHA)
 
-    assert landed == LandedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)
+    assert merged_pr == MergedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)
     assert bash_output.calls == 2
     assert len(sleeps.calls) == 1
 
 
-def test_resolve_landed_pr_fails_loudly_once_retries_are_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_merged_pr_fails_loudly_once_retries_are_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
     bash_output = FailsThenSucceeds(99, "[]")
     monkeypatch.setattr(release_module, "bash_output", bash_output)
     sleeps = CallRecorder()
     monkeypatch.setattr(release_module, "sleep", sleeps)
 
     with pytest.raises(CalledProcessError):
-        release_module.resolve_landed_pr("owner/repo", MERGE_SHA)
+        release_module.resolve_merged_pr("owner/repo", MERGE_SHA)
 
     assert bash_output.calls == 3
     assert len(sleeps.calls) == 2
@@ -592,16 +592,16 @@ def test_certified_head_prefers_the_certified_tag(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(release_module, "bash_check", tag_present)
     monkeypatch.setattr(release_module, "bash_output", resolve_tag)
 
-    assert release_module.certified_head(LandedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)) == TAGGED_SHA
+    assert release_module.certified_head(MergedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)) == TAGGED_SHA
 
 
 def test_certified_head_falls_back_to_the_pr_head_without_a_tag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(release_module, "bash_check", FixedReturn(False))
 
-    assert release_module.certified_head(LandedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)) == CERTIFIED_SHA
+    assert release_module.certified_head(MergedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)) == CERTIFIED_SHA
 
 
-def test_dev_release_stages_from_the_landed_prs_certified_head(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dev_release_stages_from_the_merged_prs_certified_head(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(apps={"myapp": make_app()})
     tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
 
@@ -627,7 +627,7 @@ def test_dev_release_stages_from_the_tagged_certified_candidate(monkeypatch: pyt
     assert all(call[3] == f"sha-{TAGGED_SHA}" for call in pull_artifact.calls)
 
 
-def test_landing_without_a_pr_degrades_to_head_facts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_merge_without_a_pr_degrades_to_head_facts(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(apps={"myapp": make_app()})
     tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
 

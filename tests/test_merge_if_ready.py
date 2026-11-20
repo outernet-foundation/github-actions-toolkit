@@ -92,7 +92,7 @@ class AncestorOnceThenMoved:
         return first
 
 
-def refuse_only_the_landed_diff(command: str) -> bool:
+def refuse_only_the_merged_diff(command: str) -> bool:
     return not command.startswith("git diff --quiet")
 
 
@@ -260,7 +260,7 @@ def test_merge_fails_loud_beyond_the_attempt_bound_without_dispatching(
     assert not any("workflow run" in command for command in bash_log.commands)
 
 
-def test_merge_lands_through_the_rebase_merge_api(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_merge_merges_through_the_rebase_merge_api(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = pr_view_payload(["ready-to-merge"])
     exit_request, bash_log = run_merge(monkeypatch, CommandResponses(merge_responses(payload)))
     assert exit_request is None
@@ -277,7 +277,7 @@ def test_merge_lands_through_the_rebase_merge_api(monkeypatch: pytest.MonkeyPatc
     assert not any("push origin HEAD:refs/heads/dev" in command for command in bash_log.commands)
 
 
-def test_merge_sweeps_and_promotes_on_landing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_merge_sweeps_and_promotes_on_merge(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = pr_view_payload(["ready-to-merge"])
     swept: list[tuple[str, str]] = []
     promoted: list[tuple[str, str, int]] = []
@@ -375,23 +375,23 @@ def test_merge_fails_loud_on_an_unexplained_api_refusal(monkeypatch: pytest.Monk
     assert "the merge API refused to merge PR #7" in message
 
 
-def test_merge_alarms_when_the_landed_tree_differs_from_the_certified_candidate(
+def test_merge_alarms_when_the_merged_tree_differs_from_the_certified_candidate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = pr_view_payload(["ready-to-merge"])
     exit_request, _ = run_merge(
-        monkeypatch, CommandResponses(merge_responses(payload)), bash_check_fn=refuse_only_the_landed_diff
+        monkeypatch, CommandResponses(merge_responses(payload)), bash_check_fn=refuse_only_the_merged_diff
     )
     assert exit_request is not None
     assert "evergreen invariant was violated" in exit_message(exit_request)
 
 
-def test_merge_dry_run_names_the_landing(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_merge_dry_run_names_the_merge(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     payload = pr_view_payload(["ready-to-merge"])
     exit_request, bash_log = run_merge(monkeypatch, CommandResponses(merge_responses(payload)), dry_run=True)
     assert exit_request is None
     assert not any("push" in command for command in bash_log.commands)
-    assert "would land PR #7 through the rebase-merge API under lease aaaaaaaaaaaa" in capsys.readouterr().out
+    assert "would merge PR #7 through the rebase-merge API under lease aaaaaaaaaaaa" in capsys.readouterr().out
 
 
 def test_merge_dry_run_names_the_retry_for_a_moved_dev(

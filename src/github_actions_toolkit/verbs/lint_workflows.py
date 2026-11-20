@@ -51,14 +51,20 @@ TOOLKIT_USES = re.compile(rf"^{re.escape(TOOLKIT_REPOSITORY)}/\S+@(\S+)$")
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 RELEASE_WORKFLOW = Path(".github/workflows/release.yml")
 RELEASE_CONCURRENCY = "release-${{ github.ref }}"
-MERGE_GATE_WORKFLOW = Path(".github/workflows/merge-gate.yml")
-MERGE_GATE_CONCURRENCY = "merge-gate-${{ github.event.pull_request.number }}"
+INTEGRATE_WORKFLOW = Path(".github/workflows/integrate.yml")
+INTEGRATE_CONCURRENCY = "integrate-${{ github.ref }}"
+INTEGRATE_WAKE_TYPES = ["opened", "synchronize", "reopened", "labeled"]
+MERGE_REUSABLE = re.compile(r"/merge-if-ready\.yml@")
+MERGE_CONCURRENCY_GROUP = "merge"
+MERGE_CONCURRENCY_QUEUE = "max"
+RETRY_WORKFLOW = Path(".github/workflows/retry.yml")
 # actionlint has not shipped job.workflow_repository/job.workflow_sha support (rhysd/actionlint#696,
 # #707); dormant while those contexts live only inside the toolkit-checkout composite (actionlint
 # never parses composites) and kept for any future raw spelling in a workflow file. The $/ ignores
 # bridge rhysd/actionlint#732: composites and the own preflight call are referenced via $/ and the
-# regexes anchor on that spelling so ./-ref and remote-format errors stay live. All four retire
-# when the ACTIONLINT_VERSION pin moves past the fixes
+# regexes anchor on that spelling so ./-ref and remote-format errors stay live. The queue ignore
+# bridges actionlint's concurrency schema predating the queue key (the merge queue spells it).
+# All five retire when the ACTIONLINT_VERSION pin moves past the fixes
 ACTIONLINT_IGNORE_FLAGS = [
     "-ignore",
     r"property.*workflow_repository.*not.defined",
@@ -68,6 +74,8 @@ ACTIONLINT_IGNORE_FLAGS = [
     r"specifying.action.*\\$/.*ref.is.missing",
     "-ignore",
     r"reusable.workflow.call.*\\$/",
+    "-ignore",
+    r"unexpected.key.*queue.*concurrency.*section",
 ]
 
 
@@ -78,9 +86,16 @@ class Problem:
 
 
 @dataclass(frozen=True)
+class JobView:
+    uses: str | None
+    concurrency: dict[str, object] | None
+
+
+@dataclass(frozen=True)
 class WorkflowView:
     triggers: dict[str, object] | None
     concurrency: dict[str, object] | None
+    jobs: dict[str, JobView]
     uses_values: list[str]
 
 
@@ -121,10 +136,16 @@ def validate_workflow_file(path: Path, toolkit_pins: dict[Path, str]) -> list[Pr
     problems.extend(collect_pin_problems(path, workflow.uses_values, toolkit_pins))
     if workflow.triggers is not None and "workflow_call" in workflow.triggers:
         return problems + validate_reusable_workflow(workflow, path)
-    if path.name == RELEASE_WORKFLOW.name:
+    # A repo's own top-level files may carry a leading underscore to stand apart from the reusables
+    # beside them — contracts key on the normalized name
+    contract_name = path.name.removeprefix("_")
+    if contract_name == RELEASE_WORKFLOW.name:
         problems.extend(validate_release_concurrency(workflow, path))
-    if path.name == MERGE_GATE_WORKFLOW.name:
-        problems.extend(validate_merge_gate_wake(workflow, path))
+    if contract_name == INTEGRATE_WORKFLOW.name:
+        problems.extend(validate_integrate_wake(workflow, path))
+        problems.extend(validate_merge_concurrency(workflow, path))
+    if contract_name == RETRY_WORKFLOW.name:
+        problems.extend(validate_retry_dispatch(workflow, path))
     return problems
 
 
@@ -206,22 +227,86 @@ def validate_release_concurrency(workflow: WorkflowView, path: Path) -> list[Pro
     return []
 
 
-def validate_merge_gate_wake(workflow: WorkflowView, path: Path) -> list[Problem]:
+def validate_integrate_wake(workflow: WorkflowView, path: Path) -> list[Problem]:
     triggers = workflow.triggers
     pull_request = parse_str_mapping(triggers.get("pull_request")) if triggers is not None else None
     problems: list[Problem] = []
-    if pull_request is None or pull_request.get("types") != ["labeled"] or pull_request.get("branches") != ["dev"]:
-        problems.append(file_problem(path, "must trigger on pull_request to dev, types [labeled] only"))
-    if triggers is not None and "workflow_run" in triggers:
-        problems.append(file_problem(path, "workflow_run is forbidden — the labeled wake is the sole trigger"))
-    concurrency = workflow.concurrency
-    if concurrency is None or concurrency.get("group") != MERGE_GATE_CONCURRENCY:
+    if (
+        pull_request is None
+        or pull_request.get("types") != INTEGRATE_WAKE_TYPES
+        or pull_request.get("branches") != ["dev"]
+    ):
         problems.append(
-            file_problem(path, f"concurrency group must be {MERGE_GATE_CONCURRENCY} (the per-PR lander queue)")
+            file_problem(
+                path,
+                "must trigger on pull_request to dev, types [opened, synchronize, reopened, labeled]",
+            )
         )
-    elif "cancel-in-progress" in concurrency:
-        problems.append(file_problem(path, "concurrency must omit cancel-in-progress — serialization is the policy"))
+    if triggers is not None and "workflow_run" in triggers:
+        problems.append(
+            file_problem(path, "workflow_run is forbidden — the PR wakes and the run re-runs are the sole loops")
+        )
+    concurrency = workflow.concurrency
+    if concurrency is None or concurrency.get("group") != INTEGRATE_CONCURRENCY:
+        problems.append(
+            file_problem(path, f"concurrency group must be {INTEGRATE_CONCURRENCY} (the per-candidate supersession)")
+        )
+    elif concurrency.get("cancel-in-progress") is not True:
+        problems.append(
+            file_problem(
+                path,
+                "concurrency must set cancel-in-progress — a newer wake supersedes the stale attempt",
+            )
+        )
     return problems
+
+
+# The rebase-merge API has no non-fast-forward rejection to serialize merges, so the merge-calling
+# job holds the global merge queue: one merge window at a time, pending merges wait
+def validate_merge_concurrency(workflow: WorkflowView, path: Path) -> list[Problem]:
+    problems: list[Problem] = []
+    for job_name, job in workflow.jobs.items():
+        if job.uses is None or MERGE_REUSABLE.search(job.uses) is None:
+            continue
+        concurrency = job.concurrency
+        if concurrency is None:
+            problems.append(
+                file_problem(
+                    path,
+                    f"job '{job_name}' calls the merge-if-ready reusable and must hold the merge queue"
+                    f" (concurrency group {MERGE_CONCURRENCY_GROUP} with queue {MERGE_CONCURRENCY_QUEUE})",
+                )
+            )
+            continue
+        if concurrency.get("group") != MERGE_CONCURRENCY_GROUP or concurrency.get("queue") != MERGE_CONCURRENCY_QUEUE:
+            problems.append(
+                file_problem(
+                    path,
+                    f"job '{job_name}' must declare concurrency group {MERGE_CONCURRENCY_GROUP}"
+                    f" with queue {MERGE_CONCURRENCY_QUEUE} — one merge at a time, pending merges wait",
+                )
+            )
+        if concurrency.get("cancel-in-progress") is True:
+            problems.append(
+                file_problem(
+                    path, f"job '{job_name}' must not cancel-in-progress — a cancelled terminal loses the merge"
+                )
+            )
+    return problems
+
+
+def validate_retry_dispatch(workflow: WorkflowView, path: Path) -> list[Problem]:
+    triggers = workflow.triggers
+    dispatch = parse_str_mapping(triggers.get("workflow_dispatch")) if triggers is not None else None
+    inputs = parse_str_mapping(dispatch.get("inputs")) if dispatch is not None else None
+    if dispatch is None:
+        return [file_problem(path, "must declare workflow_dispatch — the terminal's retry relay entry")]
+    if inputs is None:
+        return [file_problem(path, "workflow_dispatch must declare the run-id input")]
+    entry = parse_str_mapping(inputs.get("run-id"))
+    if entry is None or entry.get("type") != "number" or entry.get("required") is not True:
+        return [file_problem(path, "workflow_dispatch input run-id must be required with type number")]
+    return []
 
 
 def parse_workflow(path: Path, document: object) -> tuple[WorkflowView | None, list[Problem]]:
@@ -233,6 +318,7 @@ def parse_workflow(path: Path, document: object) -> tuple[WorkflowView | None, l
         return None, [file_problem(path, "no jobs mapping")]
     problems: list[Problem] = []
     uses_values: list[str] = []
+    jobs: dict[str, JobView] = {}
     for job_name, job_value in jobs_value.items():
         job_mapping = parse_str_mapping(job_value)
         if job_mapping is None:
@@ -241,6 +327,10 @@ def parse_workflow(path: Path, document: object) -> tuple[WorkflowView | None, l
         job_uses = job_mapping.get("uses")
         if isinstance(job_uses, str):
             uses_values.append(job_uses)
+        jobs[job_name] = JobView(
+            uses=job_uses if isinstance(job_uses, str) else None,
+            concurrency=parse_str_mapping(job_mapping.get("concurrency")),
+        )
         for step in parse_object_list(job_mapping.get("steps")) or []:
             step_mapping = parse_str_mapping(step)
             if step_mapping is None:
@@ -256,6 +346,7 @@ def parse_workflow(path: Path, document: object) -> tuple[WorkflowView | None, l
         WorkflowView(
             triggers=triggers,
             concurrency=parse_str_mapping(root.get("concurrency")),
+            jobs=jobs,
             uses_values=uses_values,
         ),
         problems,

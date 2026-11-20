@@ -5,7 +5,8 @@ import pytest
 
 from github_actions_toolkit.verbs.lint_workflows import (
     ACTIONLINT_BUILDS,
-    MERGE_GATE_WORKFLOW,
+    INTEGRATE_WORKFLOW,
+    RETRY_WORKFLOW,
     Problem,
     RELEASE_WORKFLOW,
     ZIZMOR_BUILDS,
@@ -161,46 +162,156 @@ def test_release_contract_does_not_apply_to_other_filenames(tmp_path: Path) -> N
     assert messages_of(validate_workflow_file(path, {})) == []
 
 
-VALID_MERGE_GATE = """
+VALID_INTEGRATE = f"""
 on:
   pull_request:
     branches: [dev]
-    types: [labeled]
+    types: [opened, synchronize, reopened, labeled]
 
 concurrency:
-  group: merge-gate-${{ github.event.pull_request.number }}
+  group: integrate-${{{{ github.ref }}}}
+  cancel-in-progress: true
 
 jobs:
-  merge-gate:
-    uses: ./.github/workflows/merge-gate.yml
+  preflight:
+    uses: ./.github/workflows/preflight.yml
+  merge-if-ready:
+    needs: preflight
+    concurrency:
+      group: merge
+      queue: max
+    uses: {TOOLKIT}/.github/workflows/merge-if-ready.yml@{GOOD_SHA}
 """
 
 
-def test_merge_gate_wake_shape_is_enforced(tmp_path: Path) -> None:
-    valid = write(tmp_path / MERGE_GATE_WORKFLOW, VALID_MERGE_GATE)
+def test_integrate_wake_contract_is_enforced(tmp_path: Path) -> None:
+    valid = write(tmp_path / INTEGRATE_WORKFLOW, VALID_INTEGRATE)
     assert messages_of(validate_workflow_file(valid, {})) == []
 
-    bad_types = VALID_MERGE_GATE.replace("types: [labeled]", "types: [opened, labeled]")
-    opened = write(tmp_path / MERGE_GATE_WORKFLOW, bad_types)
-    assert "types [labeled] only" in rendered(validate_workflow_file(opened, {}))
-
-    workflow_run = VALID_MERGE_GATE.replace(
-        "concurrency:", "  workflow_run:\n    workflows: [Integrate]\n\nconcurrency:"
+    bad_types = VALID_INTEGRATE.replace(
+        "types: [opened, synchronize, reopened, labeled]", "types: [labeled, synchronize]"
     )
-    runner = write(tmp_path / MERGE_GATE_WORKFLOW, workflow_run)
+    typed = write(tmp_path / INTEGRATE_WORKFLOW, bad_types)
+    assert "types [opened, synchronize, reopened, labeled]" in rendered(validate_workflow_file(typed, {}))
+
+    workflow_run = VALID_INTEGRATE.replace(
+        "\nconcurrency:\n  group: integrate-${{ github.ref }}",
+        "\n  workflow_run:\n    workflows: [Integrate]\n\nconcurrency:\n  group: integrate-${{ github.ref }}",
+    )
+    runner = write(tmp_path / INTEGRATE_WORKFLOW, workflow_run)
     assert "workflow_run is forbidden" in rendered(validate_workflow_file(runner, {}))
 
-    canceling = VALID_MERGE_GATE.replace(
-        "group: merge-gate-${{ github.event.pull_request.number }}",
-        "group: merge-gate-${{ github.event.pull_request.number }}\n  cancel-in-progress: true",
+    wrong_group = write(tmp_path / INTEGRATE_WORKFLOW, VALID_INTEGRATE.replace("integrate-", "other-"))
+    assert "concurrency group must be integrate-${{ github.ref }}" in rendered(validate_workflow_file(wrong_group, {}))
+
+    patient = write(tmp_path / INTEGRATE_WORKFLOW, VALID_INTEGRATE.replace("  cancel-in-progress: true\n", ""))
+    assert "must set cancel-in-progress" in rendered(validate_workflow_file(patient, {}))
+
+
+VALID_RETRY = """
+on:
+  workflow_dispatch:
+    inputs:
+      run-id:
+        type: number
+        required: true
+
+jobs:
+  retry:
+    uses: ./.github/workflows/retry.yml
+"""
+
+
+def test_retry_dispatch_contract_is_enforced(tmp_path: Path) -> None:
+    valid = write(tmp_path / RETRY_WORKFLOW, VALID_RETRY)
+    assert messages_of(validate_workflow_file(valid, {})) == []
+
+    missing_dispatch = write(tmp_path / RETRY_WORKFLOW, VALID_RETRY.replace("  workflow_dispatch:\n", "  push:\n"))
+    assert "must declare workflow_dispatch" in rendered(validate_workflow_file(missing_dispatch, {}))
+
+    no_inputs = write(
+        tmp_path / RETRY_WORKFLOW,
+        VALID_RETRY.replace("      run-id:\n        type: number\n        required: true\n", ""),
     )
-    cancel = write(tmp_path / MERGE_GATE_WORKFLOW, canceling)
-    assert "must omit cancel-in-progress" in rendered(validate_workflow_file(cancel, {}))
+    assert "must declare the run-id input" in rendered(validate_workflow_file(no_inputs, {}))
+
+    wrong_type = write(tmp_path / RETRY_WORKFLOW, VALID_RETRY.replace("type: number", "type: string"))
+    assert "run-id must be required with type number" in rendered(validate_workflow_file(wrong_type, {}))
+
+    optional = write(tmp_path / RETRY_WORKFLOW, VALID_RETRY.replace("        required: true\n", ""))
+    assert "run-id must be required with type number" in rendered(validate_workflow_file(optional, {}))
+
+
+def test_integrate_contract_does_not_apply_to_other_filenames(tmp_path: Path) -> None:
+    narrowed = VALID_INTEGRATE.replace("types: [opened, synchronize, reopened, labeled]", "types: [synchronize]")
+    path = write(tmp_path / "continuous.yml", narrowed)
+    assert messages_of(validate_workflow_file(path, {})) == []
+
+
+def test_merge_queue_contract_is_enforced(tmp_path: Path) -> None:
+    valid = write(tmp_path / INTEGRATE_WORKFLOW, VALID_INTEGRATE)
+    assert messages_of(validate_workflow_file(valid, {})) == []
+
+    unqueued = write(
+        tmp_path / INTEGRATE_WORKFLOW,
+        VALID_INTEGRATE.replace("    concurrency:\n      group: merge\n      queue: max\n", ""),
+    )
+    assert "must hold the merge queue" in rendered(validate_workflow_file(unqueued, {}))
+
+    wrong_group = write(tmp_path / INTEGRATE_WORKFLOW, VALID_INTEGRATE.replace("group: merge", "group: other"))
+    assert "must declare concurrency group merge with queue max" in rendered(validate_workflow_file(wrong_group, {}))
+
+    canceling_pending = write(
+        tmp_path / INTEGRATE_WORKFLOW,
+        VALID_INTEGRATE.replace("\n      queue: max", ""),
+    )
+    assert "must declare concurrency group merge with queue max" in rendered(
+        validate_workflow_file(canceling_pending, {})
+    )
+
+    canceling = write(
+        tmp_path / INTEGRATE_WORKFLOW,
+        VALID_INTEGRATE.replace("      queue: max\n", "      queue: max\n      cancel-in-progress: true\n"),
+    )
+    assert "must not cancel-in-progress" in rendered(validate_workflow_file(canceling, {}))
+
+
+def test_merge_queue_contract_ignores_a_merge_job_that_is_not_called(tmp_path: Path) -> None:
+    without_merge = VALID_INTEGRATE.replace(
+        "  merge-if-ready:\n"
+        "    needs: preflight\n"
+        "    concurrency:\n"
+        "      group: merge\n"
+        "      queue: max\n"
+        f"    uses: {TOOLKIT}/.github/workflows/merge-if-ready.yml@{GOOD_SHA}\n",
+        "",
+    )
+    path = write(tmp_path / INTEGRATE_WORKFLOW, without_merge)
+    assert messages_of(validate_workflow_file(path, {})) == []
+
+
+def test_underscore_prefixed_files_validate_under_their_contracts(tmp_path: Path) -> None:
+    valid = write(tmp_path / f"_{INTEGRATE_WORKFLOW.name}", VALID_INTEGRATE)
+    assert messages_of(validate_workflow_file(valid, {})) == []
+
+    bad_types = VALID_INTEGRATE.replace(
+        "types: [opened, synchronize, reopened, labeled]", "types: [labeled, synchronize]"
+    )
+    typed = write(tmp_path / f"_{INTEGRATE_WORKFLOW.name}", bad_types)
+    assert "types [opened, synchronize, reopened, labeled]" in rendered(validate_workflow_file(typed, {}))
+
+    retry = write(tmp_path / f"_{RETRY_WORKFLOW.name}", VALID_RETRY)
+    assert messages_of(validate_workflow_file(retry, {})) == []
+
+    no_dispatch = write(
+        tmp_path / f"_{RETRY_WORKFLOW.name}", VALID_RETRY.replace("  workflow_dispatch:\n", "  push:\n")
+    )
+    assert "must declare workflow_dispatch" in rendered(validate_workflow_file(no_dispatch, {}))
 
 
 def test_reusable_workflow_law_is_enforced(tmp_path: Path) -> None:
     pure = write(
-        tmp_path / MERGE_GATE_WORKFLOW,
+        tmp_path / "merge-if-ready.yml",
         """
 on:
   workflow_call:
@@ -209,7 +320,7 @@ on:
         required: true
 
 jobs:
-  merge-gate:
+  merge-if-ready:
     runs-on: ubuntu-latest
     steps:
       - run: echo hi
@@ -236,7 +347,7 @@ jobs:
     assert "must not declare top-level concurrency" in rendered(validate_workflow_file(serializing, {}))
 
     hybrid = write(
-        tmp_path / "gate.yml",
+        tmp_path / "hybrid.yml",
         """
 on:
   pull_request:
@@ -245,7 +356,7 @@ on:
   workflow_call:
 
 jobs:
-  gate:
+  hybrid:
     runs-on: ubuntu-latest
     steps:
       - run: echo hi

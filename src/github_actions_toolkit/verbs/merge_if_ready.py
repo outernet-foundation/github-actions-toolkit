@@ -23,7 +23,7 @@ app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 
 MAX_ATTEMPTS = 3
 LABEL_NAME = "ready-to-merge"
-RE_POKE_MESSAGE = "Re-apply the ready-to-merge label to restart the landing"
+RE_POKE_MESSAGE = "Re-apply the ready-to-merge label to restart the merge"
 PR_VIEW_FIELDS = "state,title,headRefOid,headRefName,baseRefName,labels"
 SCOPE_PROMOTED_CACHE_REPOSITORIES = ["unity-library"]
 
@@ -98,7 +98,7 @@ def main(
         return
 
     if dry_run:
-        print(f"  would land PR #{pr_number} through the rebase-merge API under lease {pr_head_sha[:12]}")
+        print(f"  would merge PR #{pr_number} through the rebase-merge API under lease {pr_head_sha[:12]}")
         return
 
     # Tag the actual tested commit (rebase-and-merge below replays the branch onto dev, creating new SHAs; this tag is the only durable pointer to the actual tested tree)
@@ -135,14 +135,14 @@ def main(
 
     bash(FETCH_DEV_COMMAND)
 
-    # If the landed dev tree differs from the tagged candidate, dev carries a tree this run never tested
+    # If the merged dev tree differs from the tagged candidate, dev carries a tree this run never tested
     if not bash_check(f"git diff --quiet {candidate_oid} FETCH_HEAD"):
         raise SystemExit(
-            f"CATASTROPHIC ERROR: the landed {BASE_BRANCH} tree differs from the certified candidate {candidate_oid[:12]}"
+            f"CATASTROPHIC ERROR: the merged {BASE_BRANCH} tree differs from the certified candidate {candidate_oid[:12]}"
             " — the evergreen invariant was violated: revert or retest dev immediately"
         )
 
-    print(f"  verified the landed {BASE_BRANCH} tree matches the certified candidate {candidate_oid[:12]}")
+    print(f"  verified the merged {BASE_BRANCH} tree matches the certified candidate {candidate_oid[:12]}")
 
     # Delete the rebased branch we used for the integrate run
     candidate_branch = candidate_ref(pr_number)
@@ -159,7 +159,7 @@ def main(
     # Delete the PR's per-run build releases
     delete_releases_by_prefix(f"pr-{pr_number}-", repository)
 
-    # Promote the PR's build caches onto the dev scope (best-effort, a failure never fails the landing)
+    # Promote the PR's build caches onto the dev scope (best-effort, a failure never fails the merge)
     registry = f"ghcr.io/{repository}/cache"
     try:
         install_oras()

@@ -75,7 +75,7 @@ class StagedAsset(NamedTuple):
     path: Path
 
 
-class LandedPr(NamedTuple):
+class MergedPr(NamedTuple):
     number: str
     title: str
     head_sha: str
@@ -114,17 +114,17 @@ def main(
             if not release_plan.publishing and not release_plan.app_versions:
                 return
 
-    # Resolve the landed PR and the certified head SHA for the channel
+    # Resolve the merged PR and the certified head SHA for the channel
     repository = settings.github_repository
     head = bash_output("git rev-parse HEAD").strip()
-    landed = resolve_landed_pr(repository, head) if channel != ReleaseChannel.PR else None
-    sha = certified_head(landed) if landed else head
+    merged_pr = resolve_merged_pr(repository, head) if channel != ReleaseChannel.PR else None
+    sha = certified_head(merged_pr) if merged_pr else head
     short_sha = sha[:12]
 
     # The certified head can sit outside the clone's history (the certified tag carries the candidate-ref
     # tip; a fallback PR head rides the PR ref), fetched then from the PR ref
-    if landed and not bash_check(f"git cat-file -e {sha}"):
-        bash(f"git fetch origin refs/pull/{landed.number}/head")
+    if merged_pr and not bash_check(f"git cat-file -e {sha}"):
+        bash(f"git fetch origin refs/pull/{merged_pr.number}/head")
 
     # Count commits at the certified head the app binaries were stamped from
     commit_count = int(bash_output(f"git rev-list --count {sha}").strip()) if channel != ReleaseChannel.STABLE else 0
@@ -149,11 +149,11 @@ def main(
         case ReleaseChannel.DEV:
             tag = f"dev-{commit_count}"
 
-            if landed:
-                title = f"dev build {commit_count} · PR #{landed.number}: {landed.title}"
+            if merged_pr:
+                title = f"dev build {commit_count} · PR #{merged_pr.number}: {merged_pr.title}"
                 blocks.append(
-                    f"{heading} — [PR #{landed.number}: {landed.title}]"
-                    f"(https://github.com/{repository}/pull/{landed.number})"
+                    f"{heading} — [PR #{merged_pr.number}: {merged_pr.title}]"
+                    f"(https://github.com/{repository}/pull/{merged_pr.number})"
                 )
             else:
                 title = f"dev build {commit_count} · {short_sha}"
@@ -275,22 +275,22 @@ def main(
         delete_releases_by_prefix("dev-", repository)
 
 
-def resolve_landed_pr(repository: str, head: str) -> LandedPr | None:
-    # The PR database, not the landing's commit shape or message, is the record of what landed
+def resolve_merged_pr(repository: str, head: str) -> MergedPr | None:
+    # The PR database, not the merge's commit shape or message, is the record of what merged
     pulls = json.loads(bash_output_with_retry(f"gh api repos/{repository}/commits/{head}/pulls"))
-    landed = [pull for pull in pulls if pull["merged_at"] is not None and pull["merge_commit_sha"] == head]
-    if not landed:
+    merged = [pull for pull in pulls if pull["merged_at"] is not None and pull["merge_commit_sha"] == head]
+    if not merged:
         return None
-    pull = max(landed, key=itemgetter("number"))
-    return LandedPr(str(pull["number"]), pull["title"], pull["head"]["sha"])
+    pull = max(merged, key=itemgetter("number"))
+    return MergedPr(str(pull["number"]), pull["title"], pull["head"]["sha"])
 
 
-def certified_head(landed: LandedPr) -> str:
-    # The rebase-merge landing leaves the PR head unreplayed: the certified tag names the tested tree
-    tag = f"refs/tags/certified/{landed.number}^{{commit}}"
+def certified_head(merged_pr: MergedPr) -> str:
+    # The rebase-merge replay leaves the PR head unreplayed: the certified tag names the tested tree
+    tag = f"refs/tags/certified/{merged_pr.number}^{{commit}}"
     if bash_check(f"git rev-parse --verify --quiet {tag}"):
         return bash_output(f"git rev-parse {tag}").strip()
-    return landed.head_sha
+    return merged_pr.head_sha
 
 
 def bash_output_with_retry(command: str, attempts: int = 3, backoff_seconds: float = 5.0) -> str:
