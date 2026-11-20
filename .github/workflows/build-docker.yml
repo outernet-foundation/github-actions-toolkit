@@ -20,9 +20,7 @@ jobs:
       compose-matrix: ${{ steps.compose-matrix.outputs.compose-matrix }}
     steps:
       - uses: $/.github/actions/toolkit-checkout
-      - uses: $/.github/actions/consumer-checkout
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: $/.github/actions/checkout
       - uses: $/.github/actions/setup-uv
       - run: uv run --locked boatyard generate-score --check
       - run: uv run --locked boatyard lock --check
@@ -40,9 +38,7 @@ jobs:
       matrix: ${{ fromJson(needs.plan-docker-builds.outputs.matrix) }}
     steps:
       - uses: $/.github/actions/toolkit-checkout
-      - uses: $/.github/actions/consumer-checkout
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: $/.github/actions/checkout
       - uses: $/.github/actions/setup-uv
       - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev free-disk-space --large-packages --docker-images --swap-storage
         if: ${{ inputs.free_disk_space }}
@@ -67,9 +63,7 @@ jobs:
     if: ${{ !cancelled() && !failure() && fromJSON(needs.plan-docker-builds.outputs.compose-matrix).include[0] != null }}
     runs-on: ubuntu-latest
     steps:
-      - uses: $/.github/actions/consumer-checkout
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: $/.github/actions/checkout
       - uses: $/.github/actions/setup-uv
       - run: uv run --locked boatyard publish-compose --branch "$BRANCH_NAME"
         env:

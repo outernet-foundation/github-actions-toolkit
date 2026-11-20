@@ -1,7 +1,13 @@
-name: Merge gate
+name: Merge if ready
 
 on:
   workflow_call:
+    inputs:
+      retry-workflow:
+        description: Filename of the consumer's retry dispatch shim
+        required: false
+        default: retry.yml
+        type: string
     secrets:
       merge-bot-private-key:
         description: Merge-bot GitHub App private key
@@ -9,20 +15,19 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
   packages: write
 
 env:
   PYTHONUNBUFFERED: "1"
 
 jobs:
-  merge-gate:
+  merge-if-ready:
     runs-on: ubuntu-latest
     steps:
       - uses: $/.github/actions/toolkit-checkout
-      - uses: $/.github/actions/consumer-checkout
+      - uses: $/.github/actions/checkout
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          # Full clone without tags, so merge-gate can validate that this PR is a fast forward from dev
           fetch-depth: 0
       - uses: $/.github/actions/setup-uv
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
@@ -32,10 +37,12 @@ jobs:
           private-key: ${{ secrets.merge-bot-private-key }}
           permission-contents: write
           permission-pull-requests: read
-          permission-checks: read
-      - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev merge-gate --head-sha ${{ github.event.pull_request.head.sha }}
+          permission-actions: write
+      - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev merge-if-ready
         env:
           GITHUB_TOKEN: ${{ steps.mint.outputs.token }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RETRY_WORKFLOW: ${{ inputs.retry-workflow }}
           REGISTRY: ghcr.io/${{ github.repository }}
           REGISTRY_TOKEN: ${{ github.token }}
           REGISTRY_USERNAME: ${{ github.actor }}

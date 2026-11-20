@@ -19,7 +19,14 @@ class Settings(BaseSettings):
     github_actor: str = ""
     github_workspace: str = ""
     github_ref: str = ""
+    github_sha: str = ""
     github_path: str | None = None
+    github_server_url: str = ""
+    github_run_id: str = ""
+    github_run_attempt: str = ""
+    run_id: str = ""
+    pr_head_sha: str = ""
+    retry_workflow: str = "retry.yml"
 
     @model_validator(mode="after")
     def require_runner_environment(self) -> Self:

@@ -48,9 +48,8 @@ jobs:
       commit-count: ${{ steps.commit-count.outputs.commit-count }}
     steps:
       - uses: $/.github/actions/toolkit-checkout
-      - uses: $/.github/actions/consumer-checkout
+      - uses: $/.github/actions/checkout
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           fetch-tags: true
       - uses: $/.github/actions/setup-uv
@@ -71,9 +70,7 @@ jobs:
     steps:
       - name: Wipe workspace
         run: find "$GITHUB_WORKSPACE" -mindepth 1 -delete; rm -rf ~/.cache/Unity
-      - uses: $/.github/actions/consumer-checkout
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: $/.github/actions/checkout
       - uses: $/.github/actions/setup-uv
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Materialize Android keystore

@@ -1,0 +1,26 @@
+name: checkout
+description: "Check the run's candidate out: the candidate ref (an explicit ref bypasses it)"
+inputs:
+  ref:
+    description: Ref to check out directly, bypassing the candidate ref
+    required: false
+    default: ''
+  fetch-depth:
+    description: Checkout fetch-depth (1 the plain default, 0 the full clone)
+    required: false
+    default: 1
+    type: number
+  fetch-tags:
+    description: Checkout fetch-tags (true only on the full clone)
+    required: false
+    default: false
+    type: boolean
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: ${{ inputs.ref || format('refs/heads/candidate/{0}', github.event.pull_request.number) }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        fetch-tags: ${{ inputs.fetch-tags }}
+        persist-credentials: false

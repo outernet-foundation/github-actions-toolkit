@@ -1,0 +1,26 @@
+name: Rebase
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: $/.github/actions/toolkit-checkout
+      - uses: $/.github/actions/checkout
+        with:
+          # Check out the frozen payload head, never a stale candidate ref
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: $/.github/actions/setup-uv
+      - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev rebase
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

@@ -8,13 +8,11 @@ env:
 
 jobs:
   release-pr-builds:
-    if: github.event.pull_request
     runs-on: ubuntu-latest
     steps:
       - uses: $/.github/actions/toolkit-checkout
-      - uses: $/.github/actions/consumer-checkout
+      - uses: $/.github/actions/checkout
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           fetch-tags: true
       - uses: $/.github/actions/setup-uv
