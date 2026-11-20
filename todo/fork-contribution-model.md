@@ -68,7 +68,7 @@ which therefore can never be automated.
   eventual answer.
 - Later, uncontested: auto-close-on-red bots; CONTRIBUTING / social layer.
 
-## Retrofit checklist (all additive — what lands when this resumes)
+## Retrofit checklist (all additive — what ships when this resumes)
 
 1. Same-repo `if:` gates on write/secret jobs across consumer spellings + the lint's
    found-file contracts (rides a fleet sweep).

@@ -40,11 +40,11 @@ SUPERSEDED by this plan: PR first builds now fall back to the dev cache.
    certified head; merge is `--no-ff` of a head that already contains dev), the
    merge commit's tree equals the PR head's tree — so `pr-N`'s library cache at
    merge is exactly the library of the new dev head. Zero staleness by
-   construction. Alias-at-save was rejected: it could promote a never-landed
-   PR's library over a landed one.
-4. **Best-effort promote, Warn-not-fail.** A landed PR must never render a
+   construction. Alias-at-save was rejected: it could promote a never-merged
+   PR's library over a merged one.
+4. **Best-effort promote, Warn-not-fail.** A merged PR must never render a
    failed gate. Failure degrades to the previous dev cache (next PR slightly
-   colder, never broken) and self-heals at the next landing. Not re-runnable
+   colder, never broken) and self-heals at the next merge. Not re-runnable
    post-merge (the gate refuses non-OPEN on re-run); manual `oras tag` is the
    escape hatch.
 5. **Named contract (precedent: the leg schema).** The library cache OCI
@@ -128,7 +128,7 @@ SUPERSEDED by this plan: PR first builds now fall back to the dev cache.
   time (unbuffered proof); once a dev alias exists, expect
   `Falling back to unity-library:…-dev` then `Cache hit`, and an IL2CPP phase
   in minutes rather than ~13 (for a PR with light code deltas off fresh dev).
-- After the first landing under the new gate (token with Packages:read, then
+- After the first merge under the new gate (token with Packages:read, then
   `oras login ghcr.io` + `oras manifest fetch …/cache/unity-library:capturetool-AndroidMobile-dev`):
   the `org.opencontainers.image.created` annotation matches the merge time, not
   2026-09-30.
@@ -139,6 +139,6 @@ SUPERSEDED by this plan: PR first builds now fall back to the dev cache.
 
 - github-actions-toolkit: clean, on `dev` @ 33846e0.
 - placeframe-capture-tool: workspace mid-merge (UU on three workflow files);
-  PR #12 landed remotely as fc7b1fc.
+  PR #12 merged remotely as fc7b1fc.
 - Sandbox notes for verification: `GH_TOKEN=$(uv run mint-github-app-token) gh …`
   (Packages:read); `oras` at `~/.local/bin/oras`; never `gh run watch`.

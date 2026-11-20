@@ -4,7 +4,7 @@ Implementation deferred by operator ruling (2026-10-09): all supply-chain questi
 sensing AND restocking — park here as one future comprehensive initiative. The
 universal interim answer is manual operator bumping (Interim policy). Nothing here
 is built or load-bearing yet. Resume after the devkit rearchitecture's fleet cutover
-lands (plan-devkit-rearchitecture.md Phase 7); the sensing half meanwhile stands exactly as
+ships (plan-devkit-rearchitecture.md Phase 7); the sensing half meanwhile stands exactly as
 committed (`--offline` in `lint_workflows.py` — the API-dependent zizmor audits
 `impostor-commit` and `known-vulnerable-actions` simply never run).
 
@@ -112,7 +112,7 @@ lane it is precisely correct (a sensor must not fail its job, it must speak).
 ## Open sub-decisions (the resume agenda)
 
 1. Topology: where periodic org-wide jobs live — sensor home, bump machinery,
-   and the lander alternatives (D10's rejected branches, appendix) share one "central
+   and the merge-machinery alternatives (D10's rejected branches, appendix) share one "central
    scheduled job vs per-repo cron vs external service" question; decide once,
    together.
 2. Stable pre-flight blocking policy: any finding vs high-only (hostage-release
@@ -139,7 +139,7 @@ lane it is precisely correct (a sensor must not fail its job, it must speak).
 
 The zizmor audit's static components implemented and the rearchitecture's fleet cutover
 complete (plan-devkit-rearchitecture.md Phase 7) — then this file joins
-the agenda as its own initiative, decided together with the lander topology question
+the agenda as its own initiative, decided together with the merge topology question
 wherever it resumes; bump machinery may ride the fleet-sweep machinery.
 
 ## Appendix: zizmor audit record (2026-10-09)
@@ -203,7 +203,7 @@ Use `${PIPESTATUS[0]}` or no pipe.
    accepts it** (1.7.12 rejects "ref is missing"). The runner fleet is self-hosted
    (infra-github-runners): verify its version before any flip.
 9. **actionlint live-value inventory** (all probed): expression/matrix/needs reference errors
-   (unique value concentrated on paths that never execute pre-landing: release.yml, merge-gate's
+   (unique value concentrated on paths that never execute pre-merge: release.yml, merge-gate's
    wake); runner-label typos (only validator — GitHub silently queues forever; custom labels
    declared via `.github/actionlint.yaml`, unity-devkit carries one); input-typo validation for
    only 2 of the org's 4 actions (checkout and create-github-app-token yes; setup-uv and
@@ -247,12 +247,12 @@ Use `${PIPESTATUS[0]}` or no pipe.
     the checkout itself (the platform's grain is hardening against the workflow_run shape).
 17. **The fact-12 wall is workflow-trigger-scoped.** GitHub App webhooks receive
     `check_suite`/`check_run` completed events for Actions-created checks (the documented
-    CI-server pattern; the bors-ng/Kodiak/Mergify lineage) — an external event-driven lander is
+    CI-server pattern; the bors-ng/Kodiak/Mergify lineage) — an external event-driven merge daemon is
     possible without polling. tide (pure poll, 1m sync) and Zuul (webhooks + speculative
     gating) anchor the central-service tier. Parked with D10's rejected branches.
 18. **GitHub merge queue supports merge/rebase/squash methods** (queue-controlled; the 2023-era
     merge/squash-only limitation is gone) — recorded against any D5 revisit. The queue still
-    cannot express head-identity certification: it lands merge-group trees, never the
+    cannot express head-identity certification: it merges merge-group trees, never the
     byte-for-byte certified PR head.
 19. **zizmor's repo-root scan respects .gitignore** (verified on Make-it-Sing: the gitignored
     Unity `Library/PackageCache` tree — vendored livekit packages carrying their own
@@ -284,12 +284,12 @@ D4. **actionlint: keep.** Its live value is fact 9's list; reassess only if upst
     schema validation (e.g. check-jsonschema against GitHub's workflow schema) and living
     without expression typing.
 D5. **No GitHub merge queues — permanent.** Standing principle: keep the system as decoupled
-    from GitHub Actions as possible. Grounded by fact 18 (queue lands merge-group trees, never
+    from GitHub Actions as possible. Grounded by fact 18 (queue merges merge-group trees, never
     the certified PR head).
 D6. **github-app: conform.** Flat `permission-contents: write` + `permission-pull-requests:
     read` inputs on the mint step (fact 6's verified spelling — the only form that silences
     zizmor 1.30 and passes actionlint 1.7.12). The two scopes cover the merge bot's whole
-    footprint (landing push / branch delete / draft delete = contents: write; gh pr view/list
+    footprint (merge push / branch delete / draft delete = contents: write; gh pr view/list
     = pull-requests: read); the evergreen-dev ruleset bypass is identity-level and unaffected
     by scoping.
 D7. **Grammar law amended: tainted-source expressions consumed by `run:` ride the step env
@@ -309,9 +309,9 @@ D9. **Pin-bump maintenance parked into the same note** — one comprehensive sup
     initiative decides sensing and restocking together (tooling welds them: Dependabot bundles
     advisory sensor + version actuator). Interim policy (binding): all pins bump by operator
     act, manually.
-D10. **Keep the per-repo lander; label-only wake.** The sole wake is
+D10. **Keep the per-repo merge machinery; label-only wake.** The sole wake is
     `pull_request: [labeled]` on `ready-to-merge`; the label means "attempt the merge now" —
-    landing = remove-and-re-add the label once green AND rebased. Soundness rests on two
+    merging = remove-and-re-add the label once green AND rebased. Soundness rests on two
     verified properties: the all-green battery excludes the merge-gate check by name
     (`GATE_CHECK_NAME`), so failed early pokes cannot poison re-pokes; and the wake carries no
     authority — every precondition (label, OPEN, checkout-is-head, all-green, rebased-onto-dev)
@@ -319,15 +319,15 @@ D10. **Keep the per-repo lander; label-only wake.** The sole wake is
     stall. Residuals unchanged: vacuous green on repos without live verification (hence the
     standing never-label law), the mint step (D6-scoped), the two-poke merge race (second push
     loses loudly). Rejected branches, with reasons, so they are not re-litigated: GitHub merge
-    queue (cannot express head-identity certification — fact 18; moves landing policy into
-    forge config; still Actions-resident — contra D5 twice over); external lander daemon (new
+    queue (cannot express head-identity certification — fact 18; moves merge policy into
+    forge config; still Actions-resident — contra D5 twice over); external merge daemon (new
     always-on host; the App PEM wants a home disjoint from runner code-execution boxes — new
-    infrastructure); central scheduled lander (fleet-wide singleton stall risk; the 60-day
+    infrastructure); central scheduled merger (fleet-wide singleton stall risk; the 60-day
     scheduled-workflow auto-disable on quiet repos; the org's first runtime cross-repo
     coupling); per-repo cron (the same auto-disable footgun × fleet size, ~4.3k polling
     runs/day); label-waiter and integrate-tail variants (more machinery buying UX this decision
     deliberately declines). The design space is two families (a forge event wakes privileged
-    code vs a lander that goes and looks); label-only is the cleanest member of the first
+    code vs a merger that goes and looks); label-only is the cleanest member of the first
     family and the only one that is per-repo, Family A, and free of new footguns.
 
 ### Live follow-up
