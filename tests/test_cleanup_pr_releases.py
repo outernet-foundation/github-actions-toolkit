@@ -55,20 +55,26 @@ def test_cleanup_sweeps_the_prs_run_releases(monkeypatch: pytest.MonkeyPatch) ->
     ]
 
 
-def test_cleanup_deletes_the_candidate_ref(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cleanup_deletes_the_candidate_ref_and_the_tested_marker(monkeypatch: pytest.MonkeyPatch) -> None:
     _, check_log = patch_sweep_context(monkeypatch, [])
 
     cleanup_pr_releases.main(pr_number=107)
 
-    assert check_log.commands == ["gh api -X DELETE repos/owner/repo/git/refs/heads/candidate/107"]
+    assert check_log.commands == [
+        "gh api -X DELETE repos/owner/repo/git/refs/heads/candidate/107",
+        "gh api -X DELETE repos/owner/repo/git/refs/tags/tested/107",
+    ]
 
 
-def test_cleanup_tolerates_an_absent_candidate_ref(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cleanup_tolerates_absent_refs(monkeypatch: pytest.MonkeyPatch) -> None:
     _, check_log = patch_sweep_context(monkeypatch, [], candidate_ref_exists=False)
 
     cleanup_pr_releases.main(pr_number=107)
 
-    assert check_log.commands == ["gh api -X DELETE repos/owner/repo/git/refs/heads/candidate/107"]
+    assert check_log.commands == [
+        "gh api -X DELETE repos/owner/repo/git/refs/heads/candidate/107",
+        "gh api -X DELETE repos/owner/repo/git/refs/tags/tested/107",
+    ]
 
 
 def test_cleanup_spares_other_prefixes_exactly(monkeypatch: pytest.MonkeyPatch) -> None:

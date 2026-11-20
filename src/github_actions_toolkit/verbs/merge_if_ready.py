@@ -7,40 +7,30 @@ import typer
 from bashrun.bash import bash, bash_check, bash_output
 from build_artifact_registry.cache import promote_scope
 from build_artifact_registry.setup_oras import install_oras
-from pydantic import BaseModel, ConfigDict, Field
 
 from github_actions_toolkit.config import Settings
+from github_actions_toolkit.pull_requests import (
+    AS_IS_INTEGRATE_LABEL,
+    MERGE_LABEL,
+    PullRequest,
+    label_names,
+    view_pull_request,
+)
 from github_actions_toolkit.refs import (
     BASE_BRANCH,
     FETCH_DEV_COMMAND,
     GIT_COMMAND,
     pull_request_number_from_ref,
     candidate_ref,
+    tested_tag,
 )
 from github_actions_toolkit.releases import delete_releases_by_prefix
 
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 
 MAX_ATTEMPTS = 3
-LABEL_NAME = "ready-to-merge"
 RE_POKE_MESSAGE = "Re-apply the ready-to-merge label to restart the merge"
-PR_VIEW_FIELDS = "state,title,headRefOid,headRefName,baseRefName,labels"
 SCOPE_PROMOTED_CACHE_REPOSITORIES = ["unity-library"]
-
-
-class LabelEntry(BaseModel):
-    name: str
-
-
-class PullRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    state: str
-    title: str
-    head_oid: str = Field(alias="headRefOid")
-    head_ref_name: str = Field(alias="headRefName")
-    base_ref_name: str = Field(alias="baseRefName")
-    labels: list[LabelEntry]
 
 
 @app.command()
@@ -66,9 +56,29 @@ def main(
         print(f"  PR #{pr_number} is {pull_request.state}, not OPEN")
         return
 
+    # The tested marker is this run's certificate made reusable: the terminal only runs once
+    # the suite succeeded (or the rebase job matched this exact tree against a prior marker),
+    # so the candidate at HEAD is certified against the dev tip it rebased onto
+    stamp_tested_marker(pr_number, dry_run)
+
+    # A draft cannot merge (the API refuses it); marking it ready for review wakes the run again
+    if pull_request.is_draft:
+        print(f"  PR #{pr_number} is a draft; marking it ready for review re-enters the loop")
+        return
+
     # If this PR is not labeled ready-to-merge, there is nothing to do
-    if LABEL_NAME not in {label.name for label in pull_request.labels}:
-        print(f"  the {LABEL_NAME} label is not on PR #{pr_number}")
+    if MERGE_LABEL not in label_names(pull_request):
+        print(f"  the {MERGE_LABEL} label is not on PR #{pr_number}")
+        return
+
+    # The head job refuses the as-is + rebase-path label pairs, so reaching this check means
+    # the as-is label raced in while the run executed — the state must resolve before any merge
+    if AS_IS_INTEGRATE_LABEL in label_names(pull_request):
+        abort(
+            f"PR #{pr_number} carries {AS_IS_INTEGRATE_LABEL}: an as-is branch never merges."
+            f" Remove it to merge. {RE_POKE_MESSAGE}",
+            dry_run,
+        )
         return
 
     # If commits were pushed to this PR since the integrate run began, abort
@@ -149,6 +159,11 @@ def main(
     bash(f"{GIT_COMMAND} push origin --delete {candidate_branch}")
     print(f"  deleted {candidate_branch}")
 
+    # The marker is consumed with the merge; the closed-PR sweep is the backstop for interrupted ones
+    tested = tested_tag(pr_number)
+    bash(f"{GIT_COMMAND} push origin --delete refs/tags/{tested}")
+    print(f"  deleted refs/tags/{tested}")
+
     # Delete the actual PR branch (it still exists and isn't dev or main)
     if pull_request.head_ref_name not in (BASE_BRANCH, "main") and bash_check(
         f"{GIT_COMMAND} ls-remote --heads origin {pull_request.head_ref_name}"
@@ -180,8 +195,15 @@ def main(
                     print(f"  promoted {len(promoted)} {cache_name} tag(s) onto the dev scope")
 
 
-def view_pull_request(pr_number: int) -> PullRequest:
-    return PullRequest.model_validate_json(bash_output(f"gh pr view {pr_number} --json {PR_VIEW_FIELDS}"))
+def stamp_tested_marker(pr_number: int, dry_run: bool) -> None:
+    tag = tested_tag(pr_number)
+    if dry_run:
+        print(f"  would stamp the tested marker refs/tags/{tag} at the certified candidate")
+        return
+    candidate_oid = bash_output("git rev-parse HEAD").strip()
+    bash(f"git tag -f {tag} {candidate_oid}")
+    bash(f"{GIT_COMMAND} push --force origin refs/tags/{tag}")
+    print(f"  stamped refs/tags/{tag} at candidate {candidate_oid[:12]}")
 
 
 def head_moved(pull_request: PullRequest, lease: str) -> bool:

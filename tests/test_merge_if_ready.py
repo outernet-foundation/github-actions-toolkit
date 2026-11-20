@@ -4,11 +4,12 @@ from subprocess import CalledProcessError
 
 import pytest
 
+from github_actions_toolkit import pull_requests as pull_requests_module
+from github_actions_toolkit.pull_requests import PR_VIEW_FIELDS
 from github_actions_toolkit.verbs import merge_if_ready
 
 PAYLOAD_SHA = "a" * 40
 CANDIDATE_SHA = "b" * 40
-PR_VIEW_FIELDS = "state,title,headRefOid,headRefName,baseRefName,labels"
 CANDIDATE_REF = "refs/heads/candidate/7"
 RUN_ID = "4242"
 
@@ -48,6 +49,7 @@ def pr_view_payload(
     labels: list[str],
     state: str = "OPEN",
     title: str = "Test PR",
+    is_draft: bool = False,
 ) -> str:
     return json.dumps({
         "state": state,
@@ -56,6 +58,7 @@ def pr_view_payload(
         "headRefName": "feature-x",
         "baseRefName": "dev",
         "labels": [{"name": name} for name in labels],
+        "isDraft": is_draft,
     })
 
 
@@ -125,6 +128,7 @@ def patch_merge(
     monkeypatch.setenv("GITHUB_RUN_ID", RUN_ID)
     monkeypatch.setenv("PR_HEAD_SHA", PAYLOAD_SHA)
     monkeypatch.setattr(merge_if_ready, "bash_output", responses)
+    monkeypatch.setattr(pull_requests_module, "bash_output", responses)
     monkeypatch.setattr(merge_if_ready, "bash", bash_function)
     monkeypatch.setattr(merge_if_ready, "bash_check", bash_check_fn or accept_any_bash_check)
     monkeypatch.setattr(merge_if_ready, "delete_releases_by_prefix", noop_sweep)
@@ -201,7 +205,29 @@ def test_merge_quietly_skips_when_the_label_is_absent(monkeypatch: pytest.Monkey
     payload = pr_view_payload([])
     exit_request, bash_log = run_merge(monkeypatch, CommandResponses(merge_responses(payload)))
     assert exit_request is None
-    assert not any("push" in command for command in bash_log.commands)
+    assert any("push --force origin refs/tags/tested/7" in command for command in bash_log.commands)
+    assert not any("certified" in command for command in bash_log.commands)
+    assert not any("push origin --delete" in command for command in bash_log.commands)
+
+
+def test_merge_quietly_skips_a_draft_even_when_labeled(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = pr_view_payload(["ready-to-merge"], is_draft=True)
+    exit_request, bash_log = run_merge(monkeypatch, CommandResponses(merge_responses(payload)))
+    assert exit_request is None
+    assert any("push --force origin refs/tags/tested/7" in command for command in bash_log.commands)
+    assert not any("certified" in command for command in bash_log.commands)
+    assert not any("pulls/7/merge" in command for command in bash_log.commands)
+
+
+def test_merge_refuses_the_as_is_label_raced_in_mid_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = pr_view_payload(["ready-to-merge", "ready-to-integrate"])
+    exit_request, bash_log = run_merge(monkeypatch, CommandResponses(merge_responses(payload)))
+    assert exit_request is not None
+    message = exit_message(exit_request)
+    assert "ready-to-integrate" in message
+    assert "never merges" in message
+    assert any("push --force origin refs/tags/tested/7" in command for command in bash_log.commands)
+    assert not any("certified" in command for command in bash_log.commands)
 
 
 def test_merge_aborts_when_the_pr_head_moved(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -214,7 +240,9 @@ def test_merge_aborts_when_the_pr_head_moved(monkeypatch: pytest.MonkeyPatch) ->
     message = exit_message(exit_request)
     assert "head moved while the run ran" in message
     assert "Re-apply the ready-to-merge label" in message
-    assert not any("push" in command for command in bash_log.commands)
+    assert any("push --force origin refs/tags/tested/7" in command for command in bash_log.commands)
+    assert not any("certified" in command for command in bash_log.commands)
+    assert not any("push origin --delete" in command for command in bash_log.commands)
 
 
 def test_merge_dispatches_a_retry_when_dev_moved(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -256,7 +284,9 @@ def test_merge_fails_loud_beyond_the_attempt_bound_without_dispatching(
     message = exit_message(exit_request)
     assert "moved more than 3 times" in message
     assert "Re-apply the ready-to-merge label" in message
-    assert not any("push" in command for command in bash_log.commands)
+    assert any("push --force origin refs/tags/tested/7" in command for command in bash_log.commands)
+    assert not any("certified" in command for command in bash_log.commands)
+    assert not any("push origin --delete" in command for command in bash_log.commands)
     assert not any("workflow run" in command for command in bash_log.commands)
 
 
@@ -266,11 +296,13 @@ def test_merge_merges_through_the_rebase_merge_api(monkeypatch: pytest.MonkeyPat
     assert exit_request is None
     assert any(f"git tag -f certified/7 {CANDIDATE_SHA}" in command for command in bash_log.commands)
     assert any("push --force origin refs/tags/certified/7" in command for command in bash_log.commands)
+    assert any("push --force origin refs/tags/tested/7" in command for command in bash_log.commands)
     assert any(
         f"gh api -X PUT repos/owner/repo/pulls/7/merge -f merge_method=rebase -f sha={PAYLOAD_SHA}" in command
         for command in bash_log.commands
     )
     assert any(f"push origin --delete {CANDIDATE_REF}" in command for command in bash_log.commands)
+    assert any("push origin --delete refs/tags/tested/7" in command for command in bash_log.commands)
     assert any("push origin --delete feature-x" in command for command in bash_log.commands)
     assert not any("--force-with-lease" in command for command in bash_log.commands)
     assert not any("git merge" in command for command in bash_log.commands)
@@ -298,6 +330,7 @@ def test_merge_sweeps_and_promotes_on_merge(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
     monkeypatch.setenv("PR_HEAD_SHA", PAYLOAD_SHA)
     monkeypatch.setattr(merge_if_ready, "bash_output", CommandResponses(merge_responses(payload)))
+    monkeypatch.setattr(pull_requests_module, "bash_output", CommandResponses(merge_responses(payload)))
     monkeypatch.setattr(merge_if_ready, "bash", bash_log)
     monkeypatch.setattr(merge_if_ready, "bash_check", accept_any_bash_check)
     monkeypatch.setattr(merge_if_ready, "bash_output", CommandResponses(merge_responses(payload)))
@@ -326,6 +359,7 @@ def test_merge_tolerates_a_failed_cache_promotion(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
     monkeypatch.setenv("PR_HEAD_SHA", PAYLOAD_SHA)
     monkeypatch.setattr(merge_if_ready, "bash_output", CommandResponses(merge_responses(payload)))
+    monkeypatch.setattr(pull_requests_module, "bash_output", CommandResponses(merge_responses(payload)))
     monkeypatch.setattr(merge_if_ready, "bash", bash_log)
     monkeypatch.setattr(merge_if_ready, "bash_check", accept_any_bash_check)
     monkeypatch.setattr(merge_if_ready, "bash_output", CommandResponses(merge_responses(payload)))
@@ -386,12 +420,16 @@ def test_merge_alarms_when_the_merged_tree_differs_from_the_certified_candidate(
     assert "evergreen invariant was violated" in exit_message(exit_request)
 
 
-def test_merge_dry_run_names_the_merge(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_merge_dry_run_names_the_stamp_and_the_merge(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     payload = pr_view_payload(["ready-to-merge"])
     exit_request, bash_log = run_merge(monkeypatch, CommandResponses(merge_responses(payload)), dry_run=True)
     assert exit_request is None
     assert not any("push" in command for command in bash_log.commands)
-    assert "would merge PR #7 through the rebase-merge API under lease aaaaaaaaaaaa" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "would stamp the tested marker refs/tags/tested/7" in output
+    assert "would merge PR #7 through the rebase-merge API under lease aaaaaaaaaaaa" in output
 
 
 def test_merge_dry_run_names_the_retry_for_a_moved_dev(

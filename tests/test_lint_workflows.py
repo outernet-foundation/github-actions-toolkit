@@ -166,17 +166,22 @@ VALID_INTEGRATE = f"""
 on:
   pull_request:
     branches: [dev]
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, ready_for_review]
 
 concurrency:
   group: integrate-${{{{ github.ref }}}}
   cancel-in-progress: true
 
 jobs:
+  rebase:
+    uses: {TOOLKIT}/.github/workflows/rebase.yml@{GOOD_SHA}
   preflight:
-    uses: ./.github/workflows/preflight.yml
+    needs: [rebase]
+    if: ${{{{ needs.rebase.outputs.mode == 'full' }}}}
+    uses: {TOOLKIT}/.github/workflows/preflight.yml@{GOOD_SHA}
   merge-if-ready:
-    needs: preflight
+    needs: [rebase, preflight]
+    if: ${{{{ !cancelled() && !failure() && (needs.preflight.result == 'success' || needs.rebase.outputs.mode == 'reuse') }}}}
     concurrency:
       group: merge
       queue: max
@@ -189,10 +194,12 @@ def test_integrate_wake_contract_is_enforced(tmp_path: Path) -> None:
     assert messages_of(validate_workflow_file(valid, {})) == []
 
     bad_types = VALID_INTEGRATE.replace(
-        "types: [opened, synchronize, reopened, labeled]", "types: [labeled, synchronize]"
+        "types: [opened, synchronize, reopened, labeled, ready_for_review]", "types: [labeled, synchronize]"
     )
     typed = write(tmp_path / INTEGRATE_WORKFLOW, bad_types)
-    assert "types [opened, synchronize, reopened, labeled]" in rendered(validate_workflow_file(typed, {}))
+    assert "types [opened, synchronize, reopened, labeled, ready_for_review]" in rendered(
+        validate_workflow_file(typed, {})
+    )
 
     workflow_run = VALID_INTEGRATE.replace(
         "\nconcurrency:\n  group: integrate-${{ github.ref }}",
@@ -294,7 +301,8 @@ def test_merge_queue_contract_covers_the_dollar_self_call(tmp_path: Path) -> Non
 def test_merge_queue_contract_ignores_a_merge_job_that_is_not_called(tmp_path: Path) -> None:
     without_merge = VALID_INTEGRATE.replace(
         "  merge-if-ready:\n"
-        "    needs: preflight\n"
+        "    needs: [rebase, preflight]\n"
+        "    if: ${{ !cancelled() && !failure() && (needs.preflight.result == 'success' || needs.rebase.outputs.mode == 'reuse') }}\n"
         "    concurrency:\n"
         "      group: merge\n"
         "      queue: max\n"
@@ -305,15 +313,83 @@ def test_merge_queue_contract_ignores_a_merge_job_that_is_not_called(tmp_path: P
     assert messages_of(validate_workflow_file(path, {})) == []
 
 
+def test_reuse_gate_contract_is_enforced(tmp_path: Path) -> None:
+    valid = write(tmp_path / INTEGRATE_WORKFLOW, VALID_INTEGRATE)
+    assert messages_of(validate_workflow_file(valid, {})) == []
+
+    ungated = write(
+        tmp_path / INTEGRATE_WORKFLOW,
+        VALID_INTEGRATE.replace("    if: ${{ needs.rebase.outputs.mode == 'full' }}\n", ""),
+    )
+    assert "must gate on needs.rebase.outputs.mode == 'full'" in rendered(validate_workflow_file(ungated, {}))
+
+    wrong_gate = write(
+        tmp_path / INTEGRATE_WORKFLOW,
+        VALID_INTEGRATE.replace("mode == 'full'", "mode == 'idle'"),
+    )
+    assert "must gate on needs.rebase.outputs.mode == 'full'" in rendered(validate_workflow_file(wrong_gate, {}))
+
+    bare_gate = write(
+        tmp_path / INTEGRATE_WORKFLOW,
+        VALID_INTEGRATE.replace(
+            "if: ${{ needs.rebase.outputs.mode == 'full' }}", "if: needs.rebase.outputs.mode == 'full'"
+        ),
+    )
+    assert messages_of(validate_workflow_file(bare_gate, {})) == []
+
+
+def test_terminal_reuse_gate_contract_is_enforced(tmp_path: Path) -> None:
+    valid = write(tmp_path / INTEGRATE_WORKFLOW, VALID_INTEGRATE)
+    assert messages_of(validate_workflow_file(valid, {})) == []
+
+    plain = write(
+        tmp_path / INTEGRATE_WORKFLOW,
+        VALID_INTEGRATE.replace(
+            "    if: ${{ !cancelled() && !failure() && (needs.preflight.result == 'success'"
+            " || needs.rebase.outputs.mode == 'reuse') }}\n",
+            "",
+        ),
+    )
+    assert "must carry the terminal reuse gate" in rendered(validate_workflow_file(plain, {}))
+
+    drop_reuse_proof = write(
+        tmp_path / INTEGRATE_WORKFLOW,
+        VALID_INTEGRATE.replace(
+            "!cancelled() && !failure() && (needs.preflight.result == 'success' || needs.rebase.outputs.mode == 'reuse')",
+            "!cancelled() && !failure()",
+        ),
+    )
+    assert "must carry the terminal reuse gate" in rendered(validate_workflow_file(drop_reuse_proof, {}))
+
+    misneeded = write(
+        tmp_path / INTEGRATE_WORKFLOW,
+        VALID_INTEGRATE.replace("    needs: [rebase, preflight]", "    needs: [preflight]"),
+    )
+    assert "must need exactly the rebase job and its one terminal suite job" in rendered(
+        validate_workflow_file(misneeded, {})
+    )
+
+
+def test_reuse_gate_contract_skips_files_without_a_rebase_call(tmp_path: Path) -> None:
+    without_rebase = VALID_INTEGRATE.replace(
+        f"  rebase:\n    uses: {TOOLKIT}/.github/workflows/rebase.yml@{GOOD_SHA}\n",
+        "",
+    )
+    path = write(tmp_path / INTEGRATE_WORKFLOW, without_rebase)
+    assert "must gate on" not in rendered(validate_workflow_file(path, {}))
+
+
 def test_underscore_prefixed_files_validate_under_their_contracts(tmp_path: Path) -> None:
     valid = write(tmp_path / f"_{INTEGRATE_WORKFLOW.name}", VALID_INTEGRATE)
     assert messages_of(validate_workflow_file(valid, {})) == []
 
     bad_types = VALID_INTEGRATE.replace(
-        "types: [opened, synchronize, reopened, labeled]", "types: [labeled, synchronize]"
+        "types: [opened, synchronize, reopened, labeled, ready_for_review]", "types: [labeled, synchronize]"
     )
     typed = write(tmp_path / f"_{INTEGRATE_WORKFLOW.name}", bad_types)
-    assert "types [opened, synchronize, reopened, labeled]" in rendered(validate_workflow_file(typed, {}))
+    assert "types [opened, synchronize, reopened, labeled, ready_for_review]" in rendered(
+        validate_workflow_file(typed, {})
+    )
 
     retry = write(tmp_path / f"_{RETRY_WORKFLOW.name}", VALID_RETRY)
     assert messages_of(validate_workflow_file(retry, {})) == []

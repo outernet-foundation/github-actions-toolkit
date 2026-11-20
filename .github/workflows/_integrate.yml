@@ -3,7 +3,7 @@ name: Integrate
 on:
   pull_request:
     branches: [dev]
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, ready_for_review]
 
 concurrency:
   group: integrate-${{ github.ref }}
@@ -22,9 +22,11 @@ jobs:
     uses: $/.github/workflows/rebase.yml
   preflight:
     needs: [rebase]
+    if: ${{ needs.rebase.outputs.mode == 'full' }}
     uses: $/.github/workflows/preflight.yml
   merge-if-ready:
-    needs: [preflight]
+    needs: [rebase, preflight]
+    if: ${{ !cancelled() && !failure() && (needs.preflight.result == 'success' || needs.rebase.outputs.mode == 'reuse') }}
     permissions:
       contents: write
       pull-requests: read

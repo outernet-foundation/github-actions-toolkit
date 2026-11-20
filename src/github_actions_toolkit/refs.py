@@ -20,3 +20,7 @@ def pull_request_number_from_ref(ref: str) -> int:
 
 def candidate_ref(pr_number: int) -> str:
     return f"refs/heads/candidate/{pr_number}"
+
+
+def tested_tag(pr_number: int) -> str:
+    return f"tested/{pr_number}"

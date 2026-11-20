@@ -6,7 +6,7 @@ import typer
 from bashrun.bash import bash_check
 
 from github_actions_toolkit.config import Settings
-from github_actions_toolkit.refs import candidate_ref
+from github_actions_toolkit.refs import candidate_ref, tested_tag
 from github_actions_toolkit.releases import delete_releases_by_prefix
 
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
@@ -23,3 +23,7 @@ def main(
     # DELETE answers 404 for an absent ref, so the failed check is the idempotent no-op
     if bash_check(f"gh api -X DELETE repos/{settings.github_repository}/git/{candidate_branch}"):
         print(f"  deleted {candidate_branch}")
+
+    marker_tag = tested_tag(pr_number)
+    if bash_check(f"gh api -X DELETE repos/{settings.github_repository}/git/refs/tags/{marker_tag}"):
+        print(f"  deleted refs/tags/{marker_tag}")

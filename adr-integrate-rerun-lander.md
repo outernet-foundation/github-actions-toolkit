@@ -4,7 +4,10 @@ Status: accepted — design converged in the 2026-11-19 interview session; imple
 the evaluator half of `adr-merge-gate-auto-rebase.md` (the gate verb, the dispatch replay entry, the fast
 path); that ADR's merge semantics stand unchanged (side ref, terminal merge, certified-head welds, the
 evergreen ruleset). The merge tail described here (head sync, local `--no-ff` merge) is superseded by
-`adr-api-rebase-merge-landing.md`; the rerun/retry halves stand. PR identity resolves from the ambient
+`adr-api-rebase-merge-landing.md`; the rerun/retry halves stand. The certificate law ("the run is the
+certificate") is amended by `adr-tested-marker-reuse.md` — the tested marker admits reusing a prior
+green run's certificate on tree identity — and the wake set gains `ready_for_review` with CI gated on
+the readiness labels of `adr-ci-label-modes.md` (unlabeled wakes idle). PR identity resolves from the ambient
 `GITHUB_REF` (`pull_request_number_from_ref`
 in `refs.py`, both ref spellings).
 Date: 2026-11-19.

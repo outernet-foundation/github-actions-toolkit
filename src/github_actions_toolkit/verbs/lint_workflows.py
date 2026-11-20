@@ -53,11 +53,13 @@ RELEASE_WORKFLOW = Path(".github/workflows/release.yml")
 RELEASE_CONCURRENCY = "release-${{ github.ref }}"
 INTEGRATE_WORKFLOW = Path(".github/workflows/integrate.yml")
 INTEGRATE_CONCURRENCY = "integrate-${{ github.ref }}"
-INTEGRATE_WAKE_TYPES = ["opened", "synchronize", "reopened", "labeled"]
+INTEGRATE_WAKE_TYPES = ["opened", "synchronize", "reopened", "labeled", "ready_for_review"]
 # consumer refs carry @sha; this repo's own $/ self-call carries no ref — both spell the merge reusable
 MERGE_REUSABLE = re.compile(r"/merge-if-ready\.yml(@|$)")
 MERGE_CONCURRENCY_GROUP = "merge"
 MERGE_CONCURRENCY_QUEUE = "max"
+REBASE_REUSABLE = re.compile(r"/rebase\.yml(@|$)")
+MODE_OUTPUT = "mode"
 RETRY_WORKFLOW = Path(".github/workflows/retry.yml")
 # actionlint has not shipped job.workflow_repository/job.workflow_sha support (rhysd/actionlint#696,
 # #707); dormant while those contexts live only inside the toolkit-checkout composite (actionlint
@@ -90,6 +92,8 @@ class Problem:
 class JobView:
     uses: str | None
     concurrency: dict[str, object] | None
+    needs: list[str]
+    if_condition: str | None
 
 
 @dataclass(frozen=True)
@@ -145,6 +149,7 @@ def validate_workflow_file(path: Path, toolkit_pins: dict[Path, str]) -> list[Pr
     if contract_name == INTEGRATE_WORKFLOW.name:
         problems.extend(validate_integrate_wake(workflow, path))
         problems.extend(validate_merge_concurrency(workflow, path))
+        problems.extend(validate_reuse_gates(workflow, path))
     if contract_name == RETRY_WORKFLOW.name:
         problems.extend(validate_retry_dispatch(workflow, path))
     return problems
@@ -237,10 +242,11 @@ def validate_integrate_wake(workflow: WorkflowView, path: Path) -> list[Problem]
         or pull_request.get("types") != INTEGRATE_WAKE_TYPES
         or pull_request.get("branches") != ["dev"]
     ):
+        wake_types = ", ".join(INTEGRATE_WAKE_TYPES)
         problems.append(
             file_problem(
                 path,
-                "must trigger on pull_request to dev, types [opened, synchronize, reopened, labeled]",
+                f"must trigger on pull_request to dev, types [{wake_types}]",
             )
         )
     if triggers is not None and "workflow_run" in triggers:
@@ -296,6 +302,76 @@ def validate_merge_concurrency(workflow: WorkflowView, path: Path) -> list[Probl
     return problems
 
 
+# The mode gates are the label-gated skip spelling: every suite job runs only in full mode,
+# and the terminal admits a skipped suite only through the rebase job's reuse proof —
+# any other skip path reaching the terminal would be a vacuously green merge
+def validate_reuse_gates(workflow: WorkflowView, path: Path) -> list[Problem]:
+    rebase_jobs = [
+        job_name
+        for job_name, job in workflow.jobs.items()
+        if job.uses is not None and REBASE_REUSABLE.search(job.uses) is not None
+    ]
+    if not rebase_jobs:
+        return []
+    rebase_name = rebase_jobs[0]
+    problems: list[Problem] = []
+    for job_name, job in workflow.jobs.items():
+        if job_name == rebase_name:
+            continue
+        if job.uses is not None and MERGE_REUSABLE.search(job.uses) is not None:
+            problems.extend(validate_merge_gate(job_name, job, rebase_name, path))
+            continue
+        suite_gate = f"needs.{rebase_name}.outputs.{MODE_OUTPUT} == 'full'"
+        if normalize_expression(job.if_condition) != suite_gate:
+            problems.append(
+                file_problem(
+                    path,
+                    f"job '{job_name}' must gate on {suite_gate} — only a full-mode run executes the suite",
+                )
+            )
+    return problems
+
+
+def validate_merge_gate(
+    merge_name: str,
+    merge_job: JobView,
+    rebase_name: str,
+    path: Path,
+) -> list[Problem]:
+    suite_needs = [need for need in merge_job.needs if need != rebase_name]
+    if len(suite_needs) != 1 or rebase_name not in merge_job.needs:
+        return [
+            file_problem(
+                path,
+                f"job '{merge_name}' must need exactly the rebase job and its one terminal suite"
+                " job — the terminal gate reads the rebase output and the suite result",
+            )
+        ]
+    suite_name = suite_needs[0]
+    canonical = (
+        f"!cancelled() && !failure() && (needs.{suite_name}.result == 'success'"
+        f" || needs.{rebase_name}.outputs.{MODE_OUTPUT} == 'reuse')"
+    )
+    if normalize_expression(merge_job.if_condition) != canonical:
+        return [
+            file_problem(
+                path,
+                f"job '{merge_name}' must carry the terminal reuse gate {canonical} — a skipped"
+                " suite reaches the merge only through the rebase job's proof",
+            )
+        ]
+    return []
+
+
+def normalize_expression(condition: str | None) -> str:
+    if condition is None:
+        return ""
+    stripped = condition.strip()
+    if stripped.startswith("${{") and stripped.endswith("}}"):
+        stripped = stripped[3:-2]
+    return " ".join(stripped.split())
+
+
 def validate_retry_dispatch(workflow: WorkflowView, path: Path) -> list[Problem]:
     triggers = workflow.triggers
     dispatch = parse_str_mapping(triggers.get("workflow_dispatch")) if triggers is not None else None
@@ -328,9 +404,18 @@ def parse_workflow(path: Path, document: object) -> tuple[WorkflowView | None, l
         job_uses = job_mapping.get("uses")
         if isinstance(job_uses, str):
             uses_values.append(job_uses)
+        needs_value = job_mapping.get("needs")
+        needs: list[str] = []
+        if isinstance(needs_value, str):
+            needs = [needs_value]
+        elif (needs_list := parse_object_list(needs_value)) is not None:
+            needs = [str(need) for need in needs_list]
+        if_value = job_mapping.get("if")
         jobs[job_name] = JobView(
             uses=job_uses if isinstance(job_uses, str) else None,
             concurrency=parse_str_mapping(job_mapping.get("concurrency")),
+            needs=needs,
+            if_condition=if_value if isinstance(if_value, str) else None,
         )
         for step in parse_object_list(job_mapping.get("steps")) or []:
             step_mapping = parse_str_mapping(step)

@@ -2,6 +2,10 @@ name: Rebase
 
 on:
   workflow_call:
+    outputs:
+      mode:
+        description: The run's CI mode — full, reuse, or idle
+        value: ${{ jobs.rebase.outputs.mode }}
 
 permissions:
   contents: write
@@ -13,6 +17,8 @@ env:
 jobs:
   rebase:
     runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.rebase.outputs.mode }}
     steps:
       - uses: $/.github/actions/toolkit-checkout
       - uses: $/.github/actions/checkout
@@ -22,5 +28,6 @@ jobs:
           fetch-depth: 0
       - uses: $/.github/actions/setup-uv
       - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev rebase
+        id: rebase
         env:
           GITHUB_TOKEN: ${{ github.token }}
