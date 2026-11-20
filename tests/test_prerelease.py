@@ -21,6 +21,7 @@ from github_actions_toolkit.verbs.release import DigestEntry, LandedPr, ReleaseC
 
 MERGE_SHA = "654321abcdef0987654321abcdef0987654321"
 CERTIFIED_SHA = "abcdef1234567890abcdef1234567890abcdef12"
+TAGGED_SHA = "1" * 40
 SHORT_SHA = CERTIFIED_SHA[:12]
 COMMIT_COUNT = 1563
 RELEASE_TAG = f"dev-{COMMIT_COUNT}"
@@ -211,6 +212,8 @@ def patch_context(
     def dispatching_bash_output(command: str) -> str:
         if command == "git rev-parse HEAD":
             return MERGE_SHA
+        if command == f"git rev-parse refs/tags/certified/{PR_NUMBER}^{{commit}}":
+            return CERTIFIED_SHA
         if command.startswith("git rev-list --count"):
             return str(COMMIT_COUNT)
         if command.startswith("gh api repos/") and command.endswith("/pulls"):
@@ -578,6 +581,26 @@ def test_resolve_landed_pr_fails_loudly_once_retries_are_exhausted(monkeypatch: 
     assert len(sleeps.calls) == 2
 
 
+def test_certified_head_prefers_the_certified_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    def tag_present(command: str) -> bool:
+        return command.startswith("git rev-parse --verify --quiet refs/tags/certified/7")
+
+    def resolve_tag(command: str) -> str:
+        assert command == "git rev-parse refs/tags/certified/7^{commit}"
+        return f"{TAGGED_SHA}\n"
+
+    monkeypatch.setattr(release_module, "bash_check", tag_present)
+    monkeypatch.setattr(release_module, "bash_output", resolve_tag)
+
+    assert release_module.certified_head(LandedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)) == TAGGED_SHA
+
+
+def test_certified_head_falls_back_to_the_pr_head_without_a_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(release_module, "bash_check", FixedReturn(False))
+
+    assert release_module.certified_head(LandedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)) == CERTIFIED_SHA
+
+
 def test_dev_release_stages_from_the_landed_prs_certified_head(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(apps={"myapp": make_app()})
     tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
@@ -586,6 +609,22 @@ def test_dev_release_stages_from_the_landed_prs_certified_head(monkeypatch: pyte
 
     assert pull_artifact.calls
     assert all(call[3] == f"sha-{CERTIFIED_SHA}" for call in pull_artifact.calls)
+
+
+def test_dev_release_stages_from_the_tagged_certified_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = make_config(apps={"myapp": make_app()})
+    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
+
+    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
+    patch_plan_tags(monkeypatch, tags)
+    pull_artifact = patch_context(monkeypatch, config)
+    patch_publish_internals(monkeypatch)
+    monkeypatch.setattr(release_module, "certified_head", FixedReturn(TAGGED_SHA))
+
+    release_module.main(channel=ReleaseChannel.DEV)
+
+    assert pull_artifact.calls
+    assert all(call[3] == f"sha-{TAGGED_SHA}" for call in pull_artifact.calls)
 
 
 def test_landing_without_a_pr_degrades_to_head_facts(monkeypatch: pytest.MonkeyPatch) -> None:

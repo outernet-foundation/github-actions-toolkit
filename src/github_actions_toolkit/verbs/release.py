@@ -28,6 +28,7 @@ from github_actions_toolkit.config import (
     built_images,
     load_config,
 )
+from github_actions_toolkit.refs import pull_request_number_from_ref
 from github_actions_toolkit.plan import (
     UNCHANGED_FALLBACK_VERSION,
     ReleasePlan,
@@ -117,10 +118,11 @@ def main(
     repository = settings.github_repository
     head = bash_output("git rev-parse HEAD").strip()
     landed = resolve_landed_pr(repository, head) if channel != ReleaseChannel.PR else None
-    sha = landed.head_sha if landed else head
+    sha = certified_head(landed) if landed else head
     short_sha = sha[:12]
 
-    # Squash and rebase merges write new commits, leaving the certified head reachable only through the PR ref
+    # The certified head can sit outside the clone's history (the certified tag carries the candidate-ref
+    # tip; a fallback PR head rides the PR ref), fetched then from the PR ref
     if landed and not bash_check(f"git cat-file -e {sha}"):
         bash(f"git fetch origin refs/pull/{landed.number}/head")
 
@@ -139,7 +141,7 @@ def main(
     # Compose the channel's tag, title, versions, and header
     match channel:
         case ReleaseChannel.PR:
-            pr_number = re.findall(r"^refs/pull/(\d+)/merge$", settings.github_ref)[0]
+            pr_number = pull_request_number_from_ref(settings.github_ref)
             tag = f"pr-{pr_number}-{commit_count}"
             title = f"PR #{pr_number} · {short_sha} · build {commit_count}"
             blocks.append(heading)
@@ -281,6 +283,14 @@ def resolve_landed_pr(repository: str, head: str) -> LandedPr | None:
         return None
     pull = max(landed, key=itemgetter("number"))
     return LandedPr(str(pull["number"]), pull["title"], pull["head"]["sha"])
+
+
+def certified_head(landed: LandedPr) -> str:
+    # The rebase-merge landing leaves the PR head unreplayed: the certified tag names the tested tree
+    tag = f"refs/tags/certified/{landed.number}^{{commit}}"
+    if bash_check(f"git rev-parse --verify --quiet {tag}"):
+        return bash_output(f"git rev-parse {tag}").strip()
+    return landed.head_sha
 
 
 def bash_output_with_retry(command: str, attempts: int = 3, backoff_seconds: float = 5.0) -> str:
