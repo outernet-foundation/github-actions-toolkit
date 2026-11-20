@@ -276,6 +276,21 @@ def test_merge_queue_contract_is_enforced(tmp_path: Path) -> None:
     assert "must not cancel-in-progress" in rendered(validate_workflow_file(canceling, {}))
 
 
+def test_merge_queue_contract_covers_the_dollar_self_call(tmp_path: Path) -> None:
+    self_call = VALID_INTEGRATE.replace(
+        f"uses: {TOOLKIT}/.github/workflows/merge-if-ready.yml@{GOOD_SHA}",
+        "uses: $/.github/workflows/merge-if-ready.yml",
+    )
+    valid = write(tmp_path / INTEGRATE_WORKFLOW, self_call)
+    assert messages_of(validate_workflow_file(valid, {})) == []
+
+    unqueued = write(
+        tmp_path / INTEGRATE_WORKFLOW,
+        self_call.replace("    concurrency:\n      group: merge\n      queue: max\n", ""),
+    )
+    assert "must hold the merge queue" in rendered(validate_workflow_file(unqueued, {}))
+
+
 def test_merge_queue_contract_ignores_a_merge_job_that_is_not_called(tmp_path: Path) -> None:
     without_merge = VALID_INTEGRATE.replace(
         "  merge-if-ready:\n"

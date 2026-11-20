@@ -54,7 +54,8 @@ RELEASE_CONCURRENCY = "release-${{ github.ref }}"
 INTEGRATE_WORKFLOW = Path(".github/workflows/integrate.yml")
 INTEGRATE_CONCURRENCY = "integrate-${{ github.ref }}"
 INTEGRATE_WAKE_TYPES = ["opened", "synchronize", "reopened", "labeled"]
-MERGE_REUSABLE = re.compile(r"/merge-if-ready\.yml@")
+# consumer refs carry @sha; this repo's own $/ self-call carries no ref — both spell the merge reusable
+MERGE_REUSABLE = re.compile(r"/merge-if-ready\.yml(@|$)")
 MERGE_CONCURRENCY_GROUP = "merge"
 MERGE_CONCURRENCY_QUEUE = "max"
 RETRY_WORKFLOW = Path(".github/workflows/retry.yml")
