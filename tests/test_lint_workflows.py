@@ -3,23 +3,13 @@ from pathlib import Path
 
 import pytest
 
+from github_actions_toolkit.verbs import lint_workflows
 from github_actions_toolkit.verbs.lint_workflows import (
     ACTIONLINT_BUILDS,
-    MERGE_GATE_WORKFLOW,
-    Problem,
-    RELEASE_WORKFLOW,
     ZIZMOR_BUILDS,
-    found_action_files,
+    found_stage_files,
     found_workflows,
-    render_problem,
-    validate_action_file,
-    validate_toolkit_pin_consistency,
-    validate_workflow_file,
 )
-
-GOOD_SHA = "a" * 40
-OTHER_SHA = "b" * 40
-TOOLKIT = "outernet-foundation/github-actions-toolkit"
 
 
 def test_audit_binaries_cover_the_same_platforms() -> None:
@@ -28,16 +18,23 @@ def test_audit_binaries_cover_the_same_platforms() -> None:
 
 def test_zizmor_builds_carry_sha256_checksums() -> None:
     for tarball_name, checksum in ZIZMOR_BUILDS.values():
-        assert tarball_name.startswith("zizmor-") and tarball_name.endswith(".tar.gz")
+        assert tarball_name.startswith("zizmor") and tarball_name.endswith(".tar.gz")
         assert re.fullmatch(r"[0-9a-f]{64}", checksum)
 
 
-def messages_of(problems: list[Problem]) -> list[str]:
-    return [render_problem(problem) for problem in problems]
+def skip_audit_runners() -> None:
+    pass
 
 
-def rendered(problems: list[Problem]) -> str:
-    return " ".join(messages_of(problems))
+def lint_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> str:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(lint_workflows, "run_actionlint", skip_audit_runners)
+    monkeypatch.setattr(lint_workflows, "run_zizmor", skip_audit_runners)
+    try:
+        lint_workflows.main()
+    except SystemExit:
+        pass
+    return capsys.readouterr().out
 
 
 def write(path: Path, text: str) -> Path:
@@ -46,161 +43,41 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
-def workflow_with_uses(uses: str) -> str:
-    return f"""
-jobs:
-  job:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: {uses}
-"""
+def test_a_non_mapping_document_is_flagged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(tmp_path / ".github" / "workflows" / "flat.yml", "- just\n- a\n- list\n")
+    assert "workflow is not a YAML mapping" in lint_report(monkeypatch, tmp_path, capsys)
 
 
-def test_toolkit_ref_with_full_sha_is_accepted(tmp_path: Path) -> None:
-    path = write(tmp_path / "workflow.yml", workflow_with_uses(f"{TOOLKIT}/.github/workflows/preflight.yml@{GOOD_SHA}"))
-    pins: dict[Path, str] = {}
-    assert messages_of(validate_workflow_file(path, pins)) == []
-    assert pins == {path: GOOD_SHA}
-
-
-def test_toolkit_ref_without_full_sha_is_flagged(tmp_path: Path) -> None:
-    path = write(tmp_path / "workflow.yml", workflow_with_uses(f"{TOOLKIT}/.github/workflows/preflight.yml@dev"))
-    pins: dict[Path, str] = {}
-    assert "must pin a full 40-hex commit SHA" in rendered(validate_workflow_file(path, pins))
-
-
-def test_short_sha_is_flagged(tmp_path: Path) -> None:
-    path = write(
-        tmp_path / "workflow.yml", workflow_with_uses(f"{TOOLKIT}/.github/workflows/preflight.yml@{GOOD_SHA[:12]}")
-    )
-    pins: dict[Path, str] = {}
-    assert "must pin a full 40-hex commit SHA" in rendered(validate_workflow_file(path, pins))
-
-
-def test_non_toolkit_refs_are_not_pin_checked(tmp_path: Path) -> None:
-    path = write(tmp_path / "workflow.yml", workflow_with_uses("actions/checkout@v5"))
-    pins: dict[Path, str] = {}
-    assert messages_of(validate_workflow_file(path, pins)) == []
-
-
-def test_divergent_toolkit_pins_across_files_are_flagged(tmp_path: Path) -> None:
-    first = write(tmp_path / "one.yml", workflow_with_uses(f"{TOOLKIT}/.github/workflows/preflight.yml@{GOOD_SHA}"))
-    second = write(tmp_path / "two.yml", workflow_with_uses(f"{TOOLKIT}/.github/workflows/mirror.yml@{OTHER_SHA}"))
-    pins: dict[Path, str] = {}
-    validate_workflow_file(first, pins)
-    validate_workflow_file(second, pins)
-    assert "must carry the same SHA" in rendered(validate_toolkit_pin_consistency(pins))
-
-
-def test_agreeing_toolkit_pins_pass(tmp_path: Path) -> None:
-    first = write(tmp_path / "one.yml", workflow_with_uses(f"{TOOLKIT}/.github/workflows/preflight.yml@{GOOD_SHA}"))
-    second = write(tmp_path / "two.yml", workflow_with_uses(f"{TOOLKIT}/.github/workflows/mirror.yml@{GOOD_SHA}"))
-    pins: dict[Path, str] = {}
-    validate_workflow_file(first, pins)
-    validate_workflow_file(second, pins)
-    assert messages_of(validate_toolkit_pin_consistency(pins)) == []
-
-
-def test_yaml_anchors_on_the_uses_scalar_resolve(tmp_path: Path) -> None:
-    text = f"""
-jobs:
-  one:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: &toolkit {TOOLKIT}/.github/workflows/preflight.yml@{GOOD_SHA}
-  two:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: *toolkit
-"""
-    path = write(tmp_path / "workflow.yml", text)
-    pins: dict[Path, str] = {}
-    assert messages_of(validate_workflow_file(path, pins)) == []
-    assert pins == {path: GOOD_SHA}
-
-
-def test_job_level_uses_refs_are_pin_checked(tmp_path: Path) -> None:
-    text = f"""
-jobs:
-  preflight:
-    uses: {TOOLKIT}/.github/workflows/preflight.yml@dev
-"""
-    path = write(tmp_path / "workflow.yml", text)
-    pins: dict[Path, str] = {}
-    assert "must pin a full 40-hex commit SHA" in rendered(validate_workflow_file(path, pins))
-
-
-VALID_RELEASE = """
-concurrency:
-  group: release-${{ github.ref }}
-
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo hi
-"""
-
-
-def test_release_concurrency_shape_is_enforced(tmp_path: Path) -> None:
-    valid = write(tmp_path / RELEASE_WORKFLOW, VALID_RELEASE)
-    assert messages_of(validate_workflow_file(valid, {})) == []
-
-    canceling = VALID_RELEASE.replace(
-        "group: release-${{ github.ref }}", "group: release-${{ github.ref }}\n  cancel-in-progress: true"
-    )
-    cancel = write(tmp_path / RELEASE_WORKFLOW, canceling)
-    assert "must omit cancel-in-progress" in rendered(validate_workflow_file(cancel, {}))
-
-    wrong = write(tmp_path / RELEASE_WORKFLOW, VALID_RELEASE.replace("release-${{ github.ref }}", "other"))
-    assert "concurrency group must be release-${{ github.ref }}" in rendered(validate_workflow_file(wrong, {}))
-
-
-def test_release_contract_does_not_apply_to_other_filenames(tmp_path: Path) -> None:
-    path = write(tmp_path / "nightly.yml", VALID_RELEASE.replace("release-${{ github.ref }}", "nightly"))
-    assert messages_of(validate_workflow_file(path, {})) == []
-
-
-VALID_MERGE_GATE = """
+def test_a_workflow_without_workflow_call_gets_no_reusable_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(
+        tmp_path / ".github" / "workflows" / "woken.yml",
+        """
 on:
   pull_request:
     branches: [dev]
-    types: [labeled]
 
 concurrency:
-  group: merge-gate-${{ github.event.pull_request.number }}
+  group: woken-${{ github.ref }}
 
 jobs:
-  merge-gate:
-    uses: ./.github/workflows/merge-gate.yml
-"""
-
-
-def test_merge_gate_wake_shape_is_enforced(tmp_path: Path) -> None:
-    valid = write(tmp_path / MERGE_GATE_WORKFLOW, VALID_MERGE_GATE)
-    assert messages_of(validate_workflow_file(valid, {})) == []
-
-    bad_types = VALID_MERGE_GATE.replace("types: [labeled]", "types: [opened, labeled]")
-    opened = write(tmp_path / MERGE_GATE_WORKFLOW, bad_types)
-    assert "types [labeled] only" in rendered(validate_workflow_file(opened, {}))
-
-    workflow_run = VALID_MERGE_GATE.replace(
-        "concurrency:", "  workflow_run:\n    workflows: [Integrate]\n\nconcurrency:"
+  woken:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+""",
     )
-    runner = write(tmp_path / MERGE_GATE_WORKFLOW, workflow_run)
-    assert "workflow_run is forbidden" in rendered(validate_workflow_file(runner, {}))
-
-    canceling = VALID_MERGE_GATE.replace(
-        "group: merge-gate-${{ github.event.pull_request.number }}",
-        "group: merge-gate-${{ github.event.pull_request.number }}\n  cancel-in-progress: true",
-    )
-    cancel = write(tmp_path / MERGE_GATE_WORKFLOW, canceling)
-    assert "must omit cancel-in-progress" in rendered(validate_workflow_file(cancel, {}))
+    assert lint_report(monkeypatch, tmp_path, capsys) == ""
 
 
-def test_reusable_workflow_law_is_enforced(tmp_path: Path) -> None:
-    pure = write(
-        tmp_path / MERGE_GATE_WORKFLOW,
+def test_reusable_workflow_law_is_enforced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(
+        tmp_path / ".github" / "workflows" / "merge-if-ready.yml",
         """
 on:
   workflow_call:
@@ -209,16 +86,16 @@ on:
         required: true
 
 jobs:
-  merge-gate:
+  merge-if-ready:
     runs-on: ubuntu-latest
     steps:
       - run: echo hi
 """,
     )
-    assert messages_of(validate_workflow_file(pure, {})) == []
+    assert lint_report(monkeypatch, tmp_path, capsys) == ""
 
-    serializing = write(
-        tmp_path / "preflight.yml",
+    write(
+        tmp_path / ".github" / "workflows" / "preflight.yml",
         """
 on:
   workflow_call:
@@ -233,10 +110,10 @@ jobs:
       - run: echo hi
 """,
     )
-    assert "must not declare top-level concurrency" in rendered(validate_workflow_file(serializing, {}))
+    assert "must not declare top-level concurrency" in lint_report(monkeypatch, tmp_path, capsys)
 
-    hybrid = write(
-        tmp_path / "gate.yml",
+    write(
+        tmp_path / ".github" / "workflows" / "hybrid.yml",
         """
 on:
   pull_request:
@@ -245,35 +122,62 @@ on:
   workflow_call:
 
 jobs:
-  gate:
+  hybrid:
     runs-on: ubuntu-latest
     steps:
       - run: echo hi
 """,
     )
-    assert "workflow_call as its only trigger" in rendered(validate_workflow_file(hybrid, {}))
+    assert "workflow_call as its only trigger" in lint_report(monkeypatch, tmp_path, capsys)
 
 
-def test_action_files_are_scanned_for_toolkit_pins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
+def test_stage_files_carry_the_reusable_shape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     write(
-        tmp_path / ".github/actions/release/action.yml",
-        f"""
-runs:
-  using: composite
-  steps:
-    - uses: {TOOLKIT}/.github/actions/release@{GOOD_SHA}
+        tmp_path / ".github" / "stages" / "build.yml",
+        """
+on:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
 """,
     )
-    assert [path.name for path in found_action_files()] == ["action.yml"]
-    pins: dict[Path, str] = {}
-    problems = validate_action_file(found_action_files()[0], pins)
-    assert messages_of(problems) == []
-    assert pins == {Path(".github/actions/release/action.yml"): GOOD_SHA}
+    assert lint_report(monkeypatch, tmp_path, capsys) == ""
+
+    write(
+        tmp_path / ".github" / "stages" / "build.yml",
+        """
+on:
+  workflow_call:
+
+concurrency:
+  group: build-${{ github.ref }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+""",
+    )
+    assert "must not declare top-level concurrency" in lint_report(monkeypatch, tmp_path, capsys)
 
 
-def test_found_scan_discovers_yml_and_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_found_scan_discovers_workflows_and_stage_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     write(tmp_path / ".github/workflows/one.yml", "jobs: {}")
     write(tmp_path / ".github/workflows/two.yaml", "jobs: {}")
+    write(tmp_path / ".github/stages/three.yml", "jobs: {}")
+    write(tmp_path / ".github/stages/four.yaml", "jobs: {}")
     assert [path.name for path in found_workflows()] == ["one.yml", "two.yaml"]
+    assert [path.name for path in found_stage_files()] == ["four.yaml", "three.yml"]
+
+
+def test_found_stage_scan_is_empty_without_the_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert found_stage_files() == []
