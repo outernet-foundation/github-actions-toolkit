@@ -12,8 +12,7 @@ from github_actions_toolkit.verbs import release as release_module
 from github_actions_toolkit.verbs.release import ReleaseChannel
 
 HEAD_SHA = "1111111111111111111111111111111111111111"
-CERTIFIED_SHA = "abcdef1234567890abcdef1234567890abcdef12"
-CERTIFIED_COUNT = 42
+HEAD_COUNT = 42
 
 
 class FixedReturn:
@@ -70,18 +69,8 @@ def patch_stable_context(monkeypatch: pytest.MonkeyPatch, config: PublishConfig)
     def dispatching_bash_output(command: str) -> str:
         if command == "git rev-parse HEAD":
             return HEAD_SHA
-        if command == f"git rev-list --count {CERTIFIED_SHA}":
-            return str(CERTIFIED_COUNT)
-        if command.startswith("gh api repos/") and command.endswith("/pulls"):
-            return json.dumps([
-                {
-                    "number": 3,
-                    "title": "Stable landing",
-                    "merged_at": "2026-10-19T21:31:29Z",
-                    "merge_commit_sha": HEAD_SHA,
-                    "head": {"sha": CERTIFIED_SHA},
-                }
-            ])
+        if command == f"git rev-list --count {HEAD_SHA}":
+            return str(HEAD_COUNT)
         if command.startswith("gh release list"):
             return "0"
         if "--json assets" in command:
@@ -121,9 +110,8 @@ def test_release_sweeps_dev_releases_after_cut(monkeypatch: pytest.MonkeyPatch) 
     patch_stable_context(monkeypatch, config)
     monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(release_plan))
     monkeypatch.setattr(release_module, "create_and_push_tag", CallRecorder())
-    monkeypatch.setattr(
-        release_module, "pull_artifact", FakePullArtifact({("MyApp", "AndroidMobile"): {"MyApp.apk": "build content"}})
-    )
+    pull = FakePullArtifact({("MyApp", "AndroidMobile"): {"MyApp.apk": "build content"}})
+    monkeypatch.setattr(release_module, "pull_artifact", pull)
 
     def capturing_bash(command: str) -> None:
         pass
@@ -135,6 +123,7 @@ def test_release_sweeps_dev_releases_after_cut(monkeypatch: pytest.MonkeyPatch) 
     release_module.main(channel=ReleaseChannel.STABLE)
 
     assert sweep_recorder.calls == [("dev-", "owner/repo")]
+    assert pull.calls[0][3] == f"stable-sha-{HEAD_SHA}"
 
 
 def test_release_writes_notes_from_published_assets_without_tag_guard(
@@ -178,10 +167,10 @@ def test_release_writes_notes_from_published_assets_without_tag_guard(
 
     release_tag = f"{datetime.now(UTC).strftime('%Y.%m')}.1"
     assert len(written) == 1
-    assert "### Commit [abcdef123456]" in written[0]
+    assert f"### Commit [{HEAD_SHA[:12]}]" in written[0]
     assert "## Apps" in written[0]
     assert (
-        f"| myapp | AndroidMobile | [1.0.0+{CERTIFIED_COUNT}]"
+        f"| myapp | AndroidMobile | [1.0.0+{HEAD_COUNT}]"
         f"(https://github.com/owner/repo/releases/download/{release_tag}/MyApp-AndroidMobile.apk) |"
     ) in written[0]
     assert "## Packages" not in written[0]
@@ -240,3 +229,74 @@ def test_release_stops_when_nothing_to_ship(monkeypatch: pytest.MonkeyPatch) -> 
     release_module.main(channel=ReleaseChannel.STABLE)
 
     assert bash_recorder.calls == [("git config --global --add safe.directory /workspace",)]
+
+
+def test_dev_release_titles_from_the_merged_pr_and_staples_at_the_run_sha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = PublishConfig(
+        apps={
+            "myapp": AppConfig(
+                path=Path("apps/myapp"),
+                major_minor="1.0",
+                builds=[BuildArtifactConfig(project="MyApp", platform="AndroidMobile", file="MyApp-AndroidMobile.apk")],
+            )
+        },
+    )
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_ACTOR", "bot")
+    monkeypatch.setenv("GITHUB_WORKSPACE", "/workspace")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/dev")
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    monkeypatch.setattr(release_module, "load_config", FixedReturn(config))
+    monkeypatch.setattr(release_module, "bash_check", FixedReturn(False))
+    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(ReleasePlan.empty()))
+    monkeypatch.setattr(release_module, "publish_packages", FixedReturn([]))
+
+    def dispatching_bash_output(command: str) -> str:
+        if command == "git rev-parse HEAD":
+            return HEAD_SHA
+        if command == f"git rev-list --count {HEAD_SHA}":
+            return str(HEAD_COUNT)
+        if command.startswith("gh api repos/") and command.endswith("/pulls"):
+            return json.dumps([
+                {
+                    "number": 3,
+                    "title": "Dev merge",
+                    "merged_at": "2026-11-21T00:00:00Z",
+                    "merge_commit_sha": HEAD_SHA,
+                    "head": {"sha": "abcdef1234567890abcdef1234567890abcdef12"},
+                }
+            ])
+        if command.endswith("--json assets"):
+            return json.dumps({
+                "assets": [
+                    {
+                        "name": "MyApp-AndroidMobile-42.apk",
+                        "url": "https://github.com/owner/repo/releases/download/dev-42/MyApp-AndroidMobile-42.apk",
+                    }
+                ]
+            })
+        if command.endswith("--json url"):
+            return json.dumps({"url": "https://github.com/owner/repo/releases/tag/dev-42"})
+        raise AssertionError(f"unexpected command {command}")
+
+    monkeypatch.setattr(release_module, "bash_output", dispatching_bash_output)
+    pull = FakePullArtifact({("MyApp", "AndroidMobile"): {"MyApp.apk": "build content"}})
+    monkeypatch.setattr(release_module, "pull_artifact", pull)
+    edit_commands: list[str] = []
+
+    def recording_bash(command: str) -> None:
+        if "gh release" in command:
+            edit_commands.append(command)
+
+    monkeypatch.setattr(release_module, "bash", recording_bash)
+
+    release_module.main(channel=ReleaseChannel.DEV)
+
+    create = next(command for command in edit_commands if "gh release create" in command)
+    assert "dev-42" in create
+    assert "dev build 42 · PR #3: Dev merge" in create
+    publish = next(command for command in edit_commands if "--draft=false" in command)
+    assert "--prerelease" in publish
+    assert pull.calls[0][3] == f"dev-sha-{HEAD_SHA}"

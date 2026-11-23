@@ -523,7 +523,7 @@ def test_refuses_non_pull_request_wake(monkeypatch: pytest.MonkeyPatch) -> None:
     patch_pr_bash_output(monkeypatch)
     bash_log = patch_bash(monkeypatch, check_returns=False)
 
-    with pytest.raises(IndexError):
+    with pytest.raises(SystemExit, match="carries no PR number"):
         release_module.main(channel=ReleaseChannel.PR)
 
     assert bash_log.commands == ["git config --global --add safe.directory /workspace"]

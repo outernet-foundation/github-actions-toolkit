@@ -17,11 +17,11 @@ from github_actions_toolkit.publishing import (
     semver_dev_version,
 )
 from github_actions_toolkit.verbs import release as release_module
-from github_actions_toolkit.verbs.release import DigestEntry, LandedPr, ReleaseChannel
+from github_actions_toolkit.verbs.release import DigestEntry, MergedPr, ReleaseChannel
 
 MERGE_SHA = "654321abcdef0987654321abcdef0987654321"
 CERTIFIED_SHA = "abcdef1234567890abcdef1234567890abcdef12"
-SHORT_SHA = CERTIFIED_SHA[:12]
+SHORT_SHA = MERGE_SHA[:12]
 COMMIT_COUNT = 1563
 RELEASE_TAG = f"dev-{COMMIT_COUNT}"
 RELEASE_URL = f"https://github.com/owner/repo/releases/tag/{RELEASE_TAG}"
@@ -42,7 +42,7 @@ def merged_pr_payload() -> list[dict[str, object]]:
     return [
         {
             "number": 5,
-            "title": "Earlier landing",
+            "title": "Earlier merge",
             "merged_at": "2026-10-18T18:00:00Z",
             "merge_commit_sha": "5" * 40,
             "head": {"sha": "4" * 40},
@@ -211,6 +211,8 @@ def patch_context(
     def dispatching_bash_output(command: str) -> str:
         if command == "git rev-parse HEAD":
             return MERGE_SHA
+        if command == f"git rev-parse refs/tags/certified/{PR_NUMBER}^{{commit}}":
+            return CERTIFIED_SHA
         if command.startswith("git rev-list --count"):
             return str(COMMIT_COUNT)
         if command.startswith("gh api repos/") and command.endswith("/pulls"):
@@ -371,13 +373,13 @@ def test_only_apps_changed_cuts_release_but_skips_publish(monkeypatch: pytest.Mo
 
     assert npm_registry.calls == []
     assert pull_artifact.calls != []
-    assert pull_artifact.calls[0][3] == f"sha-{CERTIFIED_SHA}"
+    assert pull_artifact.calls[0][3] == f"dev-sha-{MERGE_SHA}"
     assert len(written) == 1
     assert "## Apps" in written[0]
     assert "| App | Platform | Version |" in written[0]
     fresh_link = f"{ASSET_URL}/MyApp-AndroidMobile-{COMMIT_COUNT}.apk"
     assert f"| myapp | AndroidMobile | [1.0.1+{COMMIT_COUNT}]({fresh_link}) |" in written[0]
-    assert f"— [PR #{PR_NUMBER}: {PR_TITLE}]" in written[0]
+    assert f"· [PR #{PR_NUMBER}: {PR_TITLE}]" in written[0]
 
 
 def test_stages_all_apps_regardless_of_source_changes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -437,7 +439,7 @@ def test_any_new_digest_cuts_release_with_all_images(monkeypatch: pytest.MonkeyP
     assert "[`tree-2`](" in written[0]
     assert digest_new not in written[0]
     assert digest_existing not in written[0]
-    assert f"### Commit [{SHORT_SHA}](https://github.com/owner/repo/commit/{CERTIFIED_SHA})" in written[0]
+    assert f"### Commit [{SHORT_SHA}](https://github.com/owner/repo/commit/{MERGE_SHA})" in written[0]
 
 
 def test_release_lists_all_packages_with_dev_and_stable_versions(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -536,59 +538,77 @@ def test_resolve_publish_versions_spells_co_publishing_siblings_with_the_run_cou
     assert dependency_versions == {"co-id": "1.2.0.dev1563", "settled-id": "2.0.0"}
 
 
-def test_resolve_landed_pr_matches_the_merge_commit_and_ignores_other_pulls(
+def test_resolve_merged_pr_matches_the_merge_commit_and_ignores_other_pulls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(release_module, "bash_output", FixedReturn(json.dumps(merged_pr_payload())))
 
-    landed = release_module.resolve_landed_pr("owner/repo", MERGE_SHA)
+    merged_pr = release_module.resolve_merged_pr("owner/repo", MERGE_SHA)
 
-    assert landed == LandedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)
+    assert merged_pr == MergedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)
 
 
-def test_resolve_landed_pr_returns_none_when_nothing_landed_here(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_merged_pr_returns_none_when_nothing_merged_here(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(release_module, "bash_output", FixedReturn("[]"))
 
-    assert release_module.resolve_landed_pr("owner/repo", MERGE_SHA) is None
+    assert release_module.resolve_merged_pr("owner/repo", MERGE_SHA) is None
 
 
-def test_resolve_landed_pr_retries_a_transient_api_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_merged_pr_retries_a_transient_api_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     bash_output = FailsThenSucceeds(1, json.dumps(merged_pr_payload()))
     monkeypatch.setattr(release_module, "bash_output", bash_output)
     sleeps = CallRecorder()
     monkeypatch.setattr(release_module, "sleep", sleeps)
 
-    landed = release_module.resolve_landed_pr("owner/repo", MERGE_SHA)
+    merged_pr = release_module.resolve_merged_pr("owner/repo", MERGE_SHA)
 
-    assert landed == LandedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)
+    assert merged_pr == MergedPr(str(PR_NUMBER), PR_TITLE, CERTIFIED_SHA)
     assert bash_output.calls == 2
     assert len(sleeps.calls) == 1
 
 
-def test_resolve_landed_pr_fails_loudly_once_retries_are_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_merged_pr_fails_loudly_once_retries_are_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
     bash_output = FailsThenSucceeds(99, "[]")
     monkeypatch.setattr(release_module, "bash_output", bash_output)
     sleeps = CallRecorder()
     monkeypatch.setattr(release_module, "sleep", sleeps)
 
     with pytest.raises(CalledProcessError):
-        release_module.resolve_landed_pr("owner/repo", MERGE_SHA)
+        release_module.resolve_merged_pr("owner/repo", MERGE_SHA)
 
     assert bash_output.calls == 3
     assert len(sleeps.calls) == 2
 
 
-def test_dev_release_stages_from_the_landed_prs_certified_head(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dev_release_stages_from_the_runs_own_build_pass_sha(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(apps={"myapp": make_app()})
     tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
 
     _, _, pull_artifact, _ = run_dev_release(monkeypatch, config, make_plan(set()), tags)
 
     assert pull_artifact.calls
-    assert all(call[3] == f"sha-{CERTIFIED_SHA}" for call in pull_artifact.calls)
+    assert all(call[3] == f"dev-sha-{MERGE_SHA}" for call in pull_artifact.calls)
 
 
-def test_landing_without_a_pr_degrades_to_head_facts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_certified_tag_feeds_no_staple_anymore(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = make_config(apps={"myapp": make_app()})
+    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
+
+    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
+    patch_plan_tags(monkeypatch, tags)
+    pull_artifact = patch_context(monkeypatch, config)
+    patch_publish_internals(monkeypatch)
+    bash_log = CallRecorder()
+    monkeypatch.setattr(release_module, "bash", bash_log)
+
+    release_module.main(channel=ReleaseChannel.DEV)
+
+    commands = [call[0] for call in bash_log.calls if isinstance(call[0], str)]
+    assert not any("certified/" in command for command in commands)
+    assert all(call[3] == f"dev-sha-{MERGE_SHA}" for call in pull_artifact.calls)
+
+
+def test_merge_without_a_pr_degrades_to_head_facts(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(apps={"myapp": make_app()})
     tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
 
@@ -613,10 +633,10 @@ def test_landing_without_a_pr_degrades_to_head_facts(monkeypatch: pytest.MonkeyP
     create = next(command for command in commands if "gh release create" in command)
     assert f"dev build {COMMIT_COUNT} · {MERGE_SHA[:12]}" in create
     assert "PR #" not in written[0]
-    assert all(call[3] == f"sha-{MERGE_SHA}" for call in pull_artifact.calls)
+    assert all(call[3] == f"dev-sha-{MERGE_SHA}" for call in pull_artifact.calls)
 
 
-def test_certified_head_outside_the_clone_is_fetched_from_the_pr_ref(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_pr_head_is_ever_fetched_for_staging(monkeypatch: pytest.MonkeyPatch) -> None:
     config = make_config(apps={"myapp": make_app()})
     tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
 
@@ -624,28 +644,6 @@ def test_certified_head_outside_the_clone_is_fetched_from_the_pr_ref(monkeypatch
     patch_plan_tags(monkeypatch, tags)
     patch_context(monkeypatch, config)
     patch_publish_internals(monkeypatch)
-    bash_log = CallRecorder()
-    monkeypatch.setattr(release_module, "bash", bash_log)
-
-    release_module.main(channel=ReleaseChannel.DEV)
-
-    commands = [call[0] for call in bash_log.calls if isinstance(call[0], str)]
-    assert any(command == f"git fetch origin refs/pull/{PR_NUMBER}/head" for command in commands)
-
-
-def test_certified_head_already_in_the_clone_fetches_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
-    config = make_config(apps={"myapp": make_app()})
-    tags = FakeTags(versions={"myapp": "1.0.0"}, changed=set())
-
-    monkeypatch.setattr(release_module, "compute_release_plan", FixedReturn(make_plan(set())))
-    patch_plan_tags(monkeypatch, tags)
-    patch_context(monkeypatch, config)
-    patch_publish_internals(monkeypatch)
-
-    def dispatching_bash_check(command: str) -> bool:
-        return command.startswith("git cat-file")
-
-    monkeypatch.setattr(release_module, "bash_check", dispatching_bash_check)
     bash_log = CallRecorder()
     monkeypatch.setattr(release_module, "bash", bash_log)
 

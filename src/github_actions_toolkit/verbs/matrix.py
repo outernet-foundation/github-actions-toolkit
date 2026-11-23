@@ -21,7 +21,7 @@ LEGS = TypeAdapter(list[dict[str, object]])
 @app.command()
 def main(
     key: Annotated[
-        str, typer.Option(help="Output key the envelope lands under (job output name at the call site)")
+        str, typer.Option(help="Output key the envelope is written under (job output name at the call site)")
     ] = OUTPUT_KEY,
     config: Annotated[Path, typer.Option(help="Publish configuration YAML")] = DEFAULT_CONFIG_PATH,
     allow_empty: Annotated[

@@ -28,6 +28,7 @@ from github_actions_toolkit.config import (
     built_images,
     load_config,
 )
+from github_actions_toolkit.merging import pull_request_number_from_ref
 from github_actions_toolkit.plan import (
     UNCHANGED_FALLBACK_VERSION,
     ReleasePlan,
@@ -74,7 +75,7 @@ class StagedAsset(NamedTuple):
     path: Path
 
 
-class LandedPr(NamedTuple):
+class MergedPr(NamedTuple):
     number: str
     title: str
     head_sha: str
@@ -113,24 +114,16 @@ def main(
             if not release_plan.publishing and not release_plan.app_versions:
                 return
 
-    # Resolve the landed PR and the certified head SHA for the channel
+    # Resolve the merged PR for the dev title and notes, and staple apps at the ambient build-pass SHA
     repository = settings.github_repository
     head = bash_output("git rev-parse HEAD").strip()
-    landed = resolve_landed_pr(repository, head) if channel != ReleaseChannel.PR else None
-    sha = landed.head_sha if landed else head
+    merged_pr = resolve_merged_pr(repository, head) if channel == ReleaseChannel.DEV else None
+    sha = head
     short_sha = sha[:12]
 
-    # Squash and rebase merges write new commits, leaving the certified head reachable only through the PR ref
-    if landed and not bash_check(f"git cat-file -e {sha}"):
-        bash(f"git fetch origin refs/pull/{landed.number}/head")
-
-    # Count commits at the certified head the app binaries were stamped from
-    commit_count = int(bash_output(f"git rev-list --count {sha}").strip()) if channel != ReleaseChannel.STABLE else 0
-
-    # Stable tags names by CalVer instead of the count, but its assets still carry the certified head's stamp
-    asset_count = (
-        commit_count if channel != ReleaseChannel.STABLE else int(bash_output(f"git rev-list --count {sha}").strip())
-    )
+    # Count commits at the build-pass SHA the app binaries were stamped from
+    commit_count = int(bash_output(f"git rev-list --count {sha}").strip())
+    asset_count = commit_count
 
     # Lay out the release notes scaffolding
     heading = f"### Commit [{short_sha}](https://github.com/{repository}/commit/{sha})"
@@ -139,7 +132,7 @@ def main(
     # Compose the channel's tag, title, versions, and header
     match channel:
         case ReleaseChannel.PR:
-            pr_number = re.findall(r"^refs/pull/(\d+)/merge$", settings.github_ref)[0]
+            pr_number = pull_request_number_from_ref(settings.github_ref)
             tag = f"pr-{pr_number}-{commit_count}"
             title = f"PR #{pr_number} · {short_sha} · build {commit_count}"
             blocks.append(heading)
@@ -147,11 +140,11 @@ def main(
         case ReleaseChannel.DEV:
             tag = f"dev-{commit_count}"
 
-            if landed:
-                title = f"dev build {commit_count} · PR #{landed.number}: {landed.title}"
+            if merged_pr:
+                title = f"dev build {commit_count} · PR #{merged_pr.number}: {merged_pr.title}"
                 blocks.append(
-                    f"{heading} — [PR #{landed.number}: {landed.title}]"
-                    f"(https://github.com/{repository}/pull/{landed.number})"
+                    f"{heading} · [PR #{merged_pr.number}: {merged_pr.title}]"
+                    f"(https://github.com/{repository}/pull/{merged_pr.number})"
                 )
             else:
                 title = f"dev build {commit_count} · {short_sha}"
@@ -273,14 +266,14 @@ def main(
         delete_releases_by_prefix("dev-", repository)
 
 
-def resolve_landed_pr(repository: str, head: str) -> LandedPr | None:
-    # The PR database, not the landing's commit shape or message, is the record of what landed
+def resolve_merged_pr(repository: str, head: str) -> MergedPr | None:
+    # Resolve the merged PR through the PR database, never the merge's commit shape or message
     pulls = json.loads(bash_output_with_retry(f"gh api repos/{repository}/commits/{head}/pulls"))
-    landed = [pull for pull in pulls if pull["merged_at"] is not None and pull["merge_commit_sha"] == head]
-    if not landed:
+    merged = [pull for pull in pulls if pull["merged_at"] is not None and pull["merge_commit_sha"] == head]
+    if not merged:
         return None
-    pull = max(landed, key=itemgetter("number"))
-    return LandedPr(str(pull["number"]), pull["title"], pull["head"]["sha"])
+    pull = max(merged, key=itemgetter("number"))
+    return MergedPr(str(pull["number"]), pull["title"], pull["head"]["sha"])
 
 
 def bash_output_with_retry(command: str, attempts: int = 3, backoff_seconds: float = 5.0) -> str:
@@ -406,14 +399,14 @@ def stage_apps(
     for app_name, artifact in [
         (app_name, artifact) for app_name, app in publish_config.apps.items() for artifact in app.builds
     ]:
-        # Pull the artifact layer from the builds shelf
+        # Pull the channel-scoped shelf, because per-channel signing means one bare SHA names three artifacts
         layer = staging / f"{artifact.project}-{artifact.platform}"
 
         pull_artifact(
             shelf,
             artifact.project,
             artifact.platform,
-            f"sha-{sha}",
+            f"{channel}-sha-{sha}",
             layer,
             registry_username=settings.github_actor,
             registry_token=settings.github_token,
