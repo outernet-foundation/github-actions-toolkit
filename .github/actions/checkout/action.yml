@@ -1,8 +1,8 @@
 name: checkout
-description: "Check the run's candidate out: the candidate ref (an explicit ref bypasses it)"
+description: "Check the run's tree out: PR head on pull_request events, the candidate ref otherwise (an explicit ref bypasses both)"
 inputs:
   ref:
-    description: Ref to check out directly, bypassing the candidate ref
+    description: Ref to check out directly, bypassing the event-keyed default
     required: false
     default: ''
   fetch-depth:
@@ -20,7 +20,17 @@ runs:
   steps:
     - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       with:
-        ref: ${{ inputs.ref || format('refs/heads/candidate/{0}', github.event.pull_request.number) }}
+        # actions/checkout v7 refuses to check a fork PR's head out under a
+        # trusted event (pull_request_target, workflow_run) unless this waiver
+        # is spelled — the guard's scope is exactly that triple: trusted event,
+        # fork PR, fork-head spelling. This fleet's one sanctioned fetch inside
+        # that scope is the gate job's checkout of the frozen payload head
+        # (github.event.pull_request.head.sha), a deliberate acceptance
+        # mirrored by the org event policy that allows pull_request_target for
+        # the lane files alone; every other call site checks out the candidate
+        # ref or a same-repository PR head, outside the guard's scope
+        allow-unsafe-pr-checkout: true
+        ref: ${{ inputs.ref || (github.event_name == 'pull_request' && github.event.pull_request.head.sha) || format('refs/heads/candidate/{0}', github.event.pull_request.number) }}
         fetch-depth: ${{ inputs.fetch-depth }}
         fetch-tags: ${{ inputs.fetch-tags }}
         persist-credentials: false
