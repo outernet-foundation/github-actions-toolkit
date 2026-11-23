@@ -1,0 +1,34 @@
+name: Gate
+
+on:
+  workflow_call:
+    outputs:
+      mode:
+        description: The run's CI mode (full, reuse, or idle)
+        value: ${{ jobs.gate.outputs.mode }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.gate.outputs.mode }}
+    steps:
+      - uses: $/.github/actions/toolkit-checkout
+      - uses: $/.github/actions/checkout
+        with:
+          # Check out the frozen payload head, never a stale candidate ref
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: $/.github/actions/setup-uv
+      - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev gate
+        id: gate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_EVENT_ACTION: ${{ github.event.action }}

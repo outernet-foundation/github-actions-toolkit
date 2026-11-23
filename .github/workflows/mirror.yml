@@ -12,9 +12,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - uses: $/.github/actions/consumer-checkout
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: $/.github/actions/checkout
       - uses: $/.github/actions/setup-uv
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:

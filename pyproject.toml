@@ -32,8 +32,11 @@ cleanup-pr-releases = "github_actions_toolkit.verbs.cleanup_pr_releases:app"
 free-disk-space = "github_actions_toolkit.verbs.free_disk_space:app"
 lint-workflows = "github_actions_toolkit.verbs.lint_workflows:app"
 matrix = "github_actions_toolkit.verbs.matrix:app"
-merge-gate = "github_actions_toolkit.verbs.merge_gate:app"
+merge-if-ready = "github_actions_toolkit.verbs.merge_if_ready:app"
+gate = "github_actions_toolkit.verbs.gate:app"
 release = "github_actions_toolkit.verbs.release:app"
+retry = "github_actions_toolkit.verbs.retry:app"
+sync-contributor-docs = "github_actions_toolkit.verbs.sync_contributor_docs:app"
 validate-release-plan = "github_actions_toolkit.verbs.validate_release_plan:app"
 
 [tool.hatch.build.targets.wheel]

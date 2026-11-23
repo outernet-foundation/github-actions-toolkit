@@ -1,0 +1,26 @@
+name: Retry
+
+on:
+  workflow_call:
+    inputs:
+      run-id:
+        description: Run to re-run once it completes
+        type: number
+        required: true
+
+permissions:
+  actions: write
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: $/.github/actions/toolkit-checkout
+      - uses: $/.github/actions/setup-uv
+      - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev retry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run-id }}
