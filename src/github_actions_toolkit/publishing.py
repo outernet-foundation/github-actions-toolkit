@@ -18,6 +18,7 @@ PYPI_SIMPLE_INDEX = "https://pypi.org/simple/"
 PYPROJECT_VERSION_PATTERN = re.compile(r'^version\s*=\s*"[^"]*"')
 NPM_DEV_DIST_TAG = "dev"
 NPM_BUILD_LIFECYCLE_SCRIPTS = ("prepack", "prepare", "prepublishOnly")
+BUILD_COMMIT_STAMP = "_toolkit_build_commit"
 
 
 class Registry(Protocol):
@@ -137,6 +138,9 @@ class NpmRegistry:
 
 
 class PyPIRegistry:
+    def __init__(self, commit_sha: str) -> None:
+        self.commit_sha = commit_sha
+
     def dev_version(self, base_version: str, commit_count: int) -> str:
         return pep440_dev_version(base_version, commit_count)
 
@@ -154,7 +158,11 @@ class PyPIRegistry:
         version, dependency_versions = resolve_publish_versions(
             self, base_version, commit_count, dev, resolved_dependencies
         )
-        with ephemeral_pyproject_patch(path, version, dependency_versions):
+        # Build the wheel with the commit stamp in place, because the wheel must name the commit it was minted from
+        with (
+            ephemeral_pyproject_patch(path, version, dependency_versions),
+            ephemeral_commit_stamp(path, self.commit_sha),
+        ):
             bash("uv build --out-dir dist", cwd=path)
         bash(f"uv publish --check-url {PYPI_SIMPLE_INDEX}", cwd=path)
         return version
@@ -234,6 +242,29 @@ def ephemeral_pyproject_patch(package_path: Path, version: str, dependency_versi
         manifest_path.write_text(original, encoding="utf-8")
 
 
+@contextmanager
+def ephemeral_commit_stamp(package_path: Path, commit_sha: str) -> Generator[None]:
+    if not commit_sha:
+        raise ValueError("GITHUB_SHA is empty, so the build commit stamp has no head to write")
+    source_root = package_path / "src"
+    if not source_root.is_dir():
+        raise ValueError(f"no src/ directory under '{package_path}', which is where the stamp writes")
+    package_directories = sorted(entry for entry in source_root.iterdir() if entry.is_dir())
+    if len(package_directories) != 1:
+        found = ", ".join(entry.name for entry in package_directories) or "none"
+        raise ValueError(f"expected exactly one package directory under '{source_root}', found: {found}")
+    stamp_path = package_directories[0] / BUILD_COMMIT_STAMP
+    original = stamp_path.read_text(encoding="utf-8") if stamp_path.exists() else None
+    try:
+        stamp_path.write_text(f"{commit_sha}\n", encoding="utf-8")
+        yield
+    finally:
+        if original is None:
+            stamp_path.unlink()
+        if original is not None:
+            stamp_path.write_text(original, encoding="utf-8")
+
+
 def semver_dev_version(base_version: str, commit_count: int) -> str:
     return f"{base_version}-dev.{commit_count}"
 
@@ -242,5 +273,5 @@ def pep440_dev_version(base_version: str, commit_count: int) -> str:
     return f"{base_version}.dev{commit_count}"
 
 
-def build_registries(nuget_api_key: str) -> dict[str, Registry]:
-    return {"nuget": NuGetRegistry(nuget_api_key), "npm": NpmRegistry(), "pypi": PyPIRegistry()}
+def build_registries(nuget_api_key: str, commit_sha: str) -> dict[str, Registry]:
+    return {"nuget": NuGetRegistry(nuget_api_key), "npm": NpmRegistry(), "pypi": PyPIRegistry(commit_sha)}

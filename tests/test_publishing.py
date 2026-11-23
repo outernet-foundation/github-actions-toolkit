@@ -1,11 +1,16 @@
 import json
 from pathlib import Path
 from subprocess import CalledProcessError
+from zipfile import ZipFile
 
 import pytest
+from bashrun.bash import bash
 
 from github_actions_toolkit.publishing import NpmRegistry, NuGetRegistry, ResolvedDependency
 from github_actions_toolkit.publishing import (
+    BUILD_COMMIT_STAMP,
+    PyPIRegistry,
+    ephemeral_commit_stamp,
     ephemeral_manifest_patch,
     ephemeral_pyproject_patch,
 )
@@ -34,6 +39,16 @@ PYPROJECT_WITH_SENTINELS = (
     "\n"
     "[tool.uv.sources]\n"
     "sibling = { workspace = true }\n"
+)
+
+PYPROJECT_BUILDABLE = (
+    "[project]\n"
+    'name = "example"\n'
+    'version = "0.0.0.dev0"\n'
+    "\n"
+    "[build-system]\n"
+    'requires = ["hatchling"]\n'
+    'build-backend = "hatchling.build"\n'
 )
 
 
@@ -130,6 +145,111 @@ def test_ephemeral_pyproject_patch_rewrites_sentinel_specifiers(tmp_path: Path) 
         assert '"pydantic>=2"' in patched
 
     assert manifest_path.read_text(encoding="utf-8") == PYPROJECT_WITH_SENTINELS
+
+
+def write_src_package(tmp_path: Path) -> Path:
+    package_directory = tmp_path / "src" / "example"
+    package_directory.mkdir(parents=True)
+    (package_directory / "__init__.py").write_text("", encoding="utf-8")
+    return package_directory
+
+
+def test_commit_stamp_exists_inside_the_window_and_vanishes_after(tmp_path: Path) -> None:
+    package_directory = write_src_package(tmp_path)
+    stamp_path = package_directory / BUILD_COMMIT_STAMP
+
+    with ephemeral_commit_stamp(tmp_path, "a" * 40):
+        assert stamp_path.read_text(encoding="utf-8") == f"{'a' * 40}\n"
+
+    assert not stamp_path.exists()
+
+
+def test_commit_stamp_restores_a_preexisting_stamp(tmp_path: Path) -> None:
+    package_directory = write_src_package(tmp_path)
+    stamp_path = package_directory / BUILD_COMMIT_STAMP
+    stamp_path.write_text(f"{'0' * 40}\n", encoding="utf-8")
+
+    with ephemeral_commit_stamp(tmp_path, "a" * 40):
+        assert stamp_path.read_text(encoding="utf-8") == f"{'a' * 40}\n"
+
+    assert stamp_path.read_text(encoding="utf-8") == f"{'0' * 40}\n"
+
+
+def test_commit_stamp_vanishes_on_error(tmp_path: Path) -> None:
+    package_directory = write_src_package(tmp_path)
+
+    with pytest.raises(RuntimeError), ephemeral_commit_stamp(tmp_path, "a" * 40):
+        raise RuntimeError("publish exploded")
+
+    assert not (package_directory / BUILD_COMMIT_STAMP).exists()
+
+
+def test_commit_stamp_without_a_sha_is_loud(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match=r"GITHUB_SHA is empty"):
+        with ephemeral_commit_stamp(tmp_path, ""):
+            pass
+
+
+def test_commit_stamp_without_src_layout_is_loud(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match=r"no src/ directory"):
+        with ephemeral_commit_stamp(tmp_path, "a" * 40):
+            pass
+
+
+def test_commit_stamp_with_empty_src_is_loud(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+
+    with pytest.raises(ValueError, match=r"found: none"):
+        with ephemeral_commit_stamp(tmp_path, "a" * 40):
+            pass
+
+
+def test_commit_stamp_with_ambiguous_src_is_loud(tmp_path: Path) -> None:
+    (tmp_path / "src" / "one").mkdir(parents=True)
+    (tmp_path / "src" / "two").mkdir(parents=True)
+
+    with pytest.raises(ValueError, match=r"found: one, two"):
+        with ephemeral_commit_stamp(tmp_path, "a" * 40):
+            pass
+
+
+def test_pypi_publish_builds_inside_the_stamp_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "pyproject.toml").write_text(PYPROJECT, encoding="utf-8")
+    package_directory = write_src_package(tmp_path)
+    stamped: dict[str, str] = {}
+
+    def recording_build(
+        command: str,
+        *,
+        cwd: Path | None = None,
+        stdin_text: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> str:
+        if "uv build" in command:
+            stamped["content"] = (package_directory / BUILD_COMMIT_STAMP).read_text(encoding="utf-8")
+        return ""
+
+    monkeypatch.setattr("github_actions_toolkit.publishing.bash", recording_build)
+
+    PyPIRegistry("b" * 40).publish(tmp_path, "0.2.0", {}, False, 0)
+
+    assert stamped["content"] == f"{'b' * 40}\n"
+    assert not (package_directory / BUILD_COMMIT_STAMP).exists()
+
+
+def test_commit_stamp_rides_the_wheel(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(PYPROJECT_BUILDABLE, encoding="utf-8")
+    package_directory = write_src_package(tmp_path)
+
+    with ephemeral_commit_stamp(tmp_path, "c" * 40):
+        bash("uv build --out-dir dist", cwd=tmp_path)
+
+    wheel_path = next((tmp_path / "dist").glob("*.whl"))
+    with ZipFile(wheel_path) as archive:
+        stamp_content = archive.read(f"example/{BUILD_COMMIT_STAMP}").decode(encoding="utf-8")
+
+    assert stamp_content == f"{'c' * 40}\n"
+    assert not (package_directory / BUILD_COMMIT_STAMP).exists()
 
 
 def test_npm_publish_rides_the_dev_dist_tag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

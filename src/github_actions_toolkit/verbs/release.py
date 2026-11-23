@@ -345,7 +345,7 @@ def publish_packages(
         (Path.home() / ".npmrc").write_text("registry=https://registry.npmjs.org\n")
 
     # Build the registry adapters the package loop publishes through
-    registries = build_registries(settings.nuget_api_key)
+    registries = build_registries(settings.nuget_api_key, settings.github_sha)
     dev = channel == ReleaseChannel.DEV
     rows: list[PackageRow] = []
     for name, package in publish_config.packages.items():

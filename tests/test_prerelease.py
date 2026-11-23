@@ -521,7 +521,7 @@ def test_leftover_draft_from_botched_run_is_replaced(monkeypatch: pytest.MonkeyP
 def test_dev_version_spelling_per_registry() -> None:
     assert pep440_dev_version("0.2.1", COMMIT_COUNT) == "0.2.1.dev1563"
     assert semver_dev_version("0.2.1", COMMIT_COUNT) == "0.2.1-dev.1563"
-    assert PyPIRegistry().dev_version("0.2.1", COMMIT_COUNT) == "0.2.1.dev1563"
+    assert PyPIRegistry("a" * 40).dev_version("0.2.1", COMMIT_COUNT) == "0.2.1.dev1563"
     assert NpmRegistry().dev_version("0.2.1", COMMIT_COUNT) == "0.2.1-dev.1563"
     assert NuGetRegistry("key").dev_version("0.2.1", COMMIT_COUNT) == "0.2.1-dev.1563"
 
@@ -532,7 +532,9 @@ def test_resolve_publish_versions_spells_co_publishing_siblings_with_the_run_cou
         "settled-id": ResolvedDependency(version="2.0.0", co_publishing=False),
     }
 
-    version, dependency_versions = resolve_publish_versions(PyPIRegistry(), "0.2.1", COMMIT_COUNT, True, resolved)
+    version, dependency_versions = resolve_publish_versions(
+        PyPIRegistry("a" * 40), "0.2.1", COMMIT_COUNT, True, resolved
+    )
 
     assert version == "0.2.1.dev1563"
     assert dependency_versions == {"co-id": "1.2.0.dev1563", "settled-id": "2.0.0"}
