@@ -18,6 +18,7 @@ bash(
     env={"PR_EVENT_ACTION": "synchronize"},
 )
 bash(f'uv run --project "{toolkit_path}" --locked --no-dev sync-contributor-docs --check')
+bash(f'uv run --project "{toolkit_path}" --locked --no-dev generate-github-workflows --check')
 bash(
     f'uv run --project "{toolkit_path}" --locked --no-dev retry --dry-run',
     env={"RUN_ID": os.environ.get("GITHUB_RUN_ID", "")},

@@ -26,6 +26,9 @@ jobs:
       - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev lint-workflows
       - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev validate-release-plan
       - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev sync-contributor-docs --check
+      - run: uv sync --locked
+        if: inputs.consumer-script
+      - run: uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev generate-github-workflows --check
       - run: uv run --locked scripts/preflight.py
         if: inputs.consumer-script
         env:

@@ -30,6 +30,7 @@ build-backend = "hatchling.build"
 [project.scripts]
 cleanup-pr-releases = "github_actions_toolkit.verbs.cleanup_pr_releases:app"
 free-disk-space = "github_actions_toolkit.verbs.free_disk_space:app"
+generate-github-workflows = "github_actions_toolkit.verbs.generate_github_workflows:app"
 lint-workflows = "github_actions_toolkit.verbs.lint_workflows:app"
 matrix = "github_actions_toolkit.verbs.matrix:app"
 merge-if-ready = "github_actions_toolkit.verbs.merge_if_ready:app"
