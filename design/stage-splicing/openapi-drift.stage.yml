@@ -1,0 +1,10 @@
+# consumer-owned stage file, lives at .github/stages/openapi-drift.yml
+name: Openapi drift
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: outernet-foundation/github-actions-toolkit/.github/actions/checkout@49f1cc649de1d1f53499c85f20be1a5ae49f2be8
+      - uses: outernet-foundation/github-actions-toolkit/.github/actions/setup-uv@49f1cc649de1d1f53499c85f20be1a5ae49f2be8
+      - run: uv run --locked openapi-client-codegen --config openapi-client-codegen.yaml --check

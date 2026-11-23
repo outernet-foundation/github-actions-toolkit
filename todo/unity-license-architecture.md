@@ -5,7 +5,7 @@ unbudgeted, and the current architecture — `UNITY_*` secrets as job env, per-r
 caches, restore-or-activate in every build job — remains in force untouched. Nothing here is
 built or load-bearing. This note is deliberately absent from
 `plan-devkit-rearchitecture.md`: the plan executes Unity-agnostic with the current
-secret-threading, and this design lands (or dies) as its own initiative.
+secret-threading, and this design ships (or dies) as its own initiative.
 
 ## Why the fleet exists at all
 
@@ -102,9 +102,9 @@ workflow graph touches the fleet, so no consumer needs runner-group membership.
 `.github/workflows/unity-license-refresh.yml`, `on: schedule`, daily.
 
 Why there: the repo owns `build-unity.yml` and the license contract (contract changes and
-refresh changes land in one PR); scheduled events execute default-branch spelling only —
+refresh changes arrive in one PR); scheduled events execute default-branch spelling only —
 trusted by construction, no PR, no consumer YAML, no self-checkout dance; being public costs
-nothing (no secrets in the file; only the landed spelling can demand the fleet).
+nothing (no secrets in the file; only the default-branch spelling can demand the fleet).
 
 Job shape:
 
@@ -158,7 +158,7 @@ plain `oras pull` step in the binding; push lives in the cron).
 Acceptance criterion for the purification phase: a search of unity-devkit's `src` for
 `ghcr|oras|GITHUB_|github.token` comes up empty.
 
-### What landing would touch in plan-devkit-rearchitecture.md (when resumed)
+### What the merge would touch in plan-devkit-rearchitecture.md (when resumed)
 
 - Phase 2: `build-unity.yml` restore-only provisioning; `UNITY_*` threading dies; fork-lane
   if-gating.
@@ -209,5 +209,5 @@ Acceptance criterion for the purification phase: a search of unity-devkit's `src
 ## Resume trigger
 
 Operator budgets a session for it. It may ride the rearchitecture's later phases (see
-"What landing would touch") or run as its own initiative; the design above is final-shaped,
+"what the merge would touch") or run as its own initiative; the design above is final-shaped,
 so resumption starts at the resume agenda, not at re-derivation.

@@ -1,0 +1,31 @@
+apps:
+  capture-tool:
+    path: apps/CaptureTool
+    major_minor: "1.0"
+    builds:
+      - project: CaptureTool
+        platform: AndroidMobile
+        file: CaptureTool-AndroidMobile.apk
+
+jobs:
+  build-unity:
+    package: unity-devkit
+    repository: outernet-foundation/unity-devkit
+    runners: ["self-hosted", "unity"]
+    secrets:
+      unity-email: UNITY_EMAIL
+      unity-password: UNITY_PASSWORD
+      unity-serial: UNITY_SERIAL
+      ci-android-keystore: CI_ANDROID_KEYSTORE
+      ci-android-keystore-password: CI_ANDROID_KEYSTORE_PASSWORD
+      ci-android-key-alias: CI_ANDROID_KEY_ALIAS
+      ci-android-key-password: CI_ANDROID_KEY_PASSWORD
+      android-keystore: ANDROID_KEYSTORE
+      android-keystore-password: ANDROID_KEYSTORE_PASSWORD
+      android-key-alias: ANDROID_KEY_ALIAS
+      android-key-password: ANDROID_KEY_PASSWORD
+  build-docker:
+    package: boatyard
+    repository: outernet-foundation/boatyard
+  openapi-drift:
+    path: .github/stages/openapi-drift.yml

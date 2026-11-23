@@ -1,11 +1,12 @@
 # Fork-contribution model (parked design record)
 
-Implementation deferred by operator ruling (2026-10-10): the direction below is settled and
-the main plan (`plan-devkit-rearchitecture.md`) was verified compatible with it before
-parking — every coupling is additive (retrofit checklist below, so nothing is re-derived).
-Nothing here is built. The org-level hygiene settings this model depends on went into the
-plan's Phase 7 prerequisites independently (threat-model-justified with or without this
-initiative).
+Superseded 2026-11-21: the fork-contribution lane (`adr-fork-contribution-lane.md`) realizes
+this design — two tiers split by labeled-ness, the approval label as the trust grant, the
+merge-bot API rebase-merge as the landing. The interim rule below is the one part still
+binding, per-repo, until each repo's lane adoption lands. Implementation was deferred by
+operator ruling (2026-10-10): the direction below was settled and the main plan
+(`plan-devkit-rearchitecture.md`) was verified compatible with it before parking — every
+coupling is additive (retrofit checklist below, so nothing is re-derived).
 
 ## Intent
 
@@ -68,7 +69,7 @@ which therefore can never be automated.
   eventual answer.
 - Later, uncontested: auto-close-on-red bots; CONTRIBUTING / social layer.
 
-## Retrofit checklist (all additive — what lands when this resumes)
+## Retrofit checklist (all additive — what ships when this resumes)
 
 1. Same-repo `if:` gates on write/secret jobs across consumer spellings + the lint's
    found-file contracts (rides a fleet sweep).
@@ -79,12 +80,13 @@ which therefore can never be automated.
    vacuous green (the never-label law is the interim guard, already standing in the plan).
 5. Approval-tier + group posture verified live (on the Phase 7 ledger since 2026-10-10).
 
-## Interim policy (binding until this note resumes)
+## Interim policy (binding per-repo until its lane adoption lands)
 
-- No fork-PR handling exists: fork PRs to public consumers will show red build legs (no
-  secrets). Accepted — do not hand-hold fork PRs into green.
-- Never apply `ready-to-merge` expecting the current `merge-gate` to handle a fork PR — the
-  fork mode does not exist.
+- Fork PRs to public consumers show red build legs (no secrets) until the repo adopts the
+  lane. Accepted — do not hand-hold fork PRs into green.
+- Never apply an `approved-for-*` label to a fork PR in a repo whose lane adoption has not
+  landed — the live machinery is still the old model, and a labeled fork PR dies ugly at the
+  candidate push (`adr-fork-contribution-lane.md` D8.1).
 
 ## Resume trigger
 

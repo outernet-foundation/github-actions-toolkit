@@ -1,0 +1,119 @@
+name: Build unity
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: Runner labels for the fanout legs, as a JSON array string
+        required: false
+        default: '["ubuntu-latest"]'
+        type: string
+      channel:
+        description: Delivery channel selecting the artifact identity (pr/dev/stable)
+        required: false
+        default: pr
+        type: string
+    secrets:
+      unity-email:
+        description: Unity license email
+        required: true
+      unity-password:
+        description: Unity license password
+        required: true
+      unity-serial:
+        description: Unity license serial
+        required: true
+      ci-android-keystore:
+        description: CI Android signing keystore for pr and dev builds
+        required: true
+      ci-android-keystore-password:
+        description: Password of the CI Android signing keystore
+        required: true
+      ci-android-key-alias:
+        description: Key alias inside the CI Android signing keystore
+        required: true
+      ci-android-key-password:
+        description: Password of the CI signing key alias
+        required: true
+      android-keystore:
+        description: Production Android signing keystore for stable builds
+        required: true
+      android-keystore-password:
+        description: Password of the production Android signing keystore
+        required: true
+      android-key-alias:
+        description: Key alias inside the production Android signing keystore
+        required: true
+      android-key-password:
+        description: Password of the production signing key alias
+        required: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  plan-unity-builds:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      license-cache-key: ${{ steps.license-cache-key.outputs.license-cache-key }}
+      commit-count: ${{ steps.commit-count.outputs.commit-count }}
+    steps:
+      - uses: outernet-foundation/github-actions-toolkit/.github/actions/toolkit-checkout@49f1cc649de1d1f53499c85f20be1a5ae49f2be8
+      - uses: outernet-foundation/github-actions-toolkit/.github/actions/checkout@49f1cc649de1d1f53499c85f20be1a5ae49f2be8
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: outernet-foundation/github-actions-toolkit/.github/actions/setup-uv@49f1cc649de1d1f53499c85f20be1a5ae49f2be8
+      - id: license-cache-key
+        run: echo "license-cache-key=$(uv run --locked unity-license-tag)" >> "$GITHUB_OUTPUT"
+      - id: commit-count
+        run: echo "commit-count=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+      - id: matrix
+        run: uv run --locked build-unity-matrix | uv run --project "${{ runner.temp }}/github-actions-toolkit" --locked --no-dev matrix
+
+  build-unity:
+    needs: [plan-unity-builds]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    container: ${{ matrix.editor-image }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan-unity-builds.outputs.matrix) }}
+    steps:
+      - name: Wipe workspace
+        run: find "$GITHUB_WORKSPACE" -mindepth 1 -delete; rm -rf ~/.cache/Unity
+      - uses: outernet-foundation/github-actions-toolkit/.github/actions/checkout@49f1cc649de1d1f53499c85f20be1a5ae49f2be8
+      - uses: outernet-foundation/github-actions-toolkit/.github/actions/setup-uv@49f1cc649de1d1f53499c85f20be1a5ae49f2be8
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: >-
+          uv run --locked build-unity
+          --project "$PROJECT"
+          --platform "$PLATFORM"
+          --version "$VERSION"
+          --channel "$CHANNEL"
+          --pr-number "$PR_NUMBER"
+          --commit-count "$COMMIT_COUNT"
+          --license-cache-key "$LICENSE_CACHE_KEY"
+          --registry "$REGISTRY"
+        env:
+          PROJECT: ${{ matrix.project }}
+          PLATFORM: ${{ matrix.platform }}
+          VERSION: ${{ matrix.version }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMIT_COUNT: ${{ needs.plan-unity-builds.outputs.commit-count }}
+          LICENSE_CACHE_KEY: ${{ needs.plan-unity-builds.outputs.license-cache-key }}
+          CHANNEL: ${{ inputs.channel }}
+          UNITY_EMAIL: ${{ secrets.unity-email }}
+          UNITY_PASSWORD: ${{ secrets.unity-password }}
+          UNITY_SERIAL: ${{ secrets.unity-serial }}
+          CI_ANDROID_KEYSTORE: ${{ secrets.ci-android-keystore }}
+          CI_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ci-android-keystore-password }}
+          CI_ANDROID_KEY_ALIAS: ${{ secrets.ci-android-key-alias }}
+          CI_ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ci-android-key-password }}
+          ANDROID_KEYSTORE: ${{ secrets.android-keystore }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.android-keystore-password }}
+          ANDROID_KEY_ALIAS: ${{ secrets.android-key-alias }}
+          ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.android-key-password }}
+          REGISTRY: ghcr.io/${{ github.repository }}
+          REGISTRY_TOKEN: ${{ github.token }}
+          REGISTRY_USERNAME: ${{ github.actor }}

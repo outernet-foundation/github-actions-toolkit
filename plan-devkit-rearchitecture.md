@@ -1,13 +1,13 @@
 # Devkit rearchitecture — binding-layer consolidation, package split, fleet cutover
 
 Status: the execution plan for the remaining fleet cutover — the post-placeframe sweep queue
-(lbe-toolkit next) plus the unswept Phase 7 nodes. Everything landed is described by
+(lbe-toolkit next) plus the unswept Phase 7 nodes. Everything merged is described by
 the repos' AGENTS.md files and git
 history; this file holds only what future sessions need: the remaining queue, the laws that
 govern it, and open carries. It consolidates and supersedes the earlier plan docs
 (release-devkit-finish, ci-refresh-seed, zizmor-audit — residue in `todo/supply-chain-control.md`
 — plan-reusable-workflow-migration). Decisions are binding for execution sessions. Cadence: one
-session per PR where practical, each landing on `dev` — for the toolkit itself by operator push
+session per PR where practical, each merge onto `dev` — for the toolkit itself by operator push
 (ruling: the repo's own merge-gate is not worth it, may be repaired later; consumers keep the
 merge-gate) — each session sized to the context-window smart zone (operator ruling): when in
 doubt, split; commit discipline per AGENTS-SHARED (prose and code in separate commits, no
@@ -15,7 +15,7 @@ trailers).
 
 ## Where things stand
 
-Landed and promoted (dev = main everywhere, stable lines live on the registries): the binding
+Merged and promoted (dev = main everywhere, stable lines live on the registries): the binding
 split (github-actions-toolkit holds every reusable workflow, the release composite,
 `lint-workflows`, the merge-gate bot, the matrix helper, runner provisioning;
 build-artifact-registry is the registry-primitives PyPI dep; the old ci-devkit distribution is
@@ -36,13 +36,13 @@ unity-devkit 0.3.0 (`org.outernet.playerbuild` 0.3.0 on npm `latest`), docker-de
 logger-conf 0.3.1, openapi-client-codegen 0.3.2, pydantic-settings-pulumi 0.3.0. The
 2026-10-11 ~22:05 UTC wave republished bashrun/build-artifact-registry/logger-conf/
 python-devkit/openapi-client-codegen (config-rename + toolkit-repin legs only — package code
-unchanged; python-devkit 0.3.1 does NOT carry the ruff 0.17 triage, `9945222` still unlanded).
+unchanged; python-devkit 0.3.1 does NOT carry the ruff 0.17 triage, `9945222` still unmerged).
 That wave pinned the toolkit at `48250c4` while placeframe and capture-tool spell `8e2b332` —
 two SHAs in the wild, per-repo uniformity intact. The stray `bashrun 0.6.0` orphan stays on PyPI
 by ruling (untagged; version math is tag-driven and never references it).
 
-placeframe: the 8.3 leg LANDED through PR #137 (operator ruling: the sweep rode the operator's
-`2.0` branch — the all-packages major_minor bump plus the sweep commits — landing before the
+placeframe: the 8.3 leg MERGED through PR #137 (operator ruling: the sweep rode the operator's
+`2.0` branch — the all-packages major_minor bump plus the sweep commits — merging before the
 promotion, not after it). Contents: every `uses:` repinned to `8e2b332`, `release-devkit.yaml`
 renamed `publish.yml` with `built_images` dropped (derived from `workloads/images.yml` presence
 at the tip), the 16 `x-base-images` refs flipped upstream-native (the lock regenerated
@@ -56,7 +56,7 @@ propagation, not a skip). Outstanding placeframe-side: only the dev → main pro
 it, downstream relocks spell stable pins instead of dev prereleases. `publish-compose` stays
 local permanently (repo-side law, recorded in placeframe's workflows AGENTS.md).
 
-placeframe-capture-tool: cutover LANDED through PR #9 (merged 2026-10-12); `dev` @ `e54e904` pins
+placeframe-capture-tool: cutover MERGED through PR #9 (merged 2026-10-12); `dev` @ `e54e904` pins
 `8e2b332`, `dev`→`main` promotion still pending (main @ `ea7448a` still runs the pre-cutover
 workflows, including the banned `workflow_run` merge-gate that wakes on every Integrate
 completion). PR #10 "Final polish" is open on `final-polish` carrying the `8672637` repin for
@@ -70,7 +70,7 @@ own packages' declared 1.3.1 floors, so it cannot hold either; a fleet-wide 1.2.
 placeframe-side package.json changes plus a new dev publish.
 
 Remaining queue: lbe-toolkit next (gate satisfied — placeframe's 2.0 UPM line exists on npm as
-`2.0.0-dev.1320` prereleases; re-spell to stable once the promotion lands), Make-it-Sing, then
+`2.0.0-dev.1320` prereleases; re-spell to stable once the promotion ships), Make-it-Sing, then
 Nessle, ObserveThing, StatefulUnity last (straight to the Phase 8 grammar — `publish.yml`
 spelling, hosted runners by default; the destination org needs no runner story). Local clones
 lag where sessions left them — the operator pulls before each is touched.
@@ -78,13 +78,13 @@ lag where sessions left them — the operator pulls before each is touched.
 ## Open carries and blockers
 
 - **ruff 0.17 wave** (will recur at every remaining relock): python-devkit's canonical triage
-  (`9945222`, local branch `ignore-more-ruff-rules`, UNLANDED) adds ASYNC119 + PLW0717 to the
+  (`9945222`, local branch `ignore-more-ruff-rules`, UNMERGED) adds ASYNC119 + PLW0717 to the
   "Temporarily ignored (will be enable when conventions are established)" block with rationale.
   Until that line publishes, no consumer can both take ruff 0.17 and stay green (sync-ruff
   --check compares the committed `ruff.base.toml` against the LOCKED python-devkit's canonical).
   The wave per repo, at its next relock: canonical re-sync + relock onto 0.17 + the ~40
   mechanical fixes (RUF105 converts `# noqa:` to `# ruff: ignore` — UNREADABLE by ruff 0.14, so
-  the conversions MUST land in the same commit as the 0.17 lock bump, never before; RUF069
+  the conversions MUST arrive in the same commit as the 0.17 lock bump, never before; RUF069
   float-equality in tests; RUF201 selector syntax; ICN001 `datetime as dt` excluded for
   generated datamodels). ruff 0.17's stricter noqa parser also warns (warning only, not a
   finding) on the org-mandated `# noqa-wrapper:` header. placeframe's lock holds ruff at
@@ -108,7 +108,7 @@ lag where sessions left them — the operator pulls before each is touched.
   cutover). The main envelope is exactly: only the operator updates, updates are fast-forwards,
   deletion blocked for everyone (`required_linear_history` removed — dev tips are the gate's
   `--no-ff` merge commits by design; "main only ever advances to a promoted dev SHA" stays
-  procedural). The GitHub App token cannot push or merge — lands go through each repo's
+  procedural). The GitHub App token cannot push or merge — merges go through each repo's
   merge-gate or the operator — but it DOES read run lists, views, and logs on the public repos
   (`GH_TOKEN=$(uv run --project /pulsar/scripts mint-github-app-token) gh ...`; never
   `gh run watch` — it burns the rate limit).
@@ -174,7 +174,7 @@ Supporting laws:
   side (PyPI/npm/NuGet), "build-artifact registry" for the OCI artifact side.
 - **Fleet YAML formatting is retained, not reformed**: blank lines between jobs and top-level
   keys, permissions and secrets as block maps. Cutover changes structure, not style.
-- **No GitHub merge queues, permanently**: they land merge-group trees, never the certified
+- **No GitHub merge queues, permanently**: they merge merge-group trees, never the certified
   PR head. actionlint stays; reassess only if upstream stalls on `$/`.
 
 ## Verified platform mechanics (do not re-derive)
@@ -234,8 +234,8 @@ Supporting laws:
 
 ## The remaining sweep
 
-**Sequencing laws.** One repo = one PR landing via its own merge-gate; every repo completes
-through `main` — land on `dev`, promote `dev` → `main` (fast-forward, operator-owned), let the
+**Sequencing laws.** One repo = one PR merge via its own merge-gate; every repo completes
+through `main` — merge onto `dev`, promote `dev` → `main` (fast-forward, operator-owned), let the
 stable channel publish the new line. Each repo relocks onto the latest published versions of
 every dependency at its cutover (stable spellings once the upstream has promoted, dev
 prereleases before that; floors may keep the `>=X.Y.Z.dev0` spelling — a `.dev` prerelease
@@ -246,7 +246,7 @@ on the remote before consumer CI runs. Prereleases/new lines must exist on the r
 downstream relocks reference them. Update stale agent docs alongside code. `--refresh` on
 relocks. The docker-devkit-0.4 double-prefix guard makes a pre-flip mirror-prefixed
 `x-base-images` ref a LOUD error — the atomic-cutover pressure is by design; upstream-native
-flips and the 0.4 relock land in the same commit as the cutover.
+flips and the 0.4 relock arrive in the same commit as the cutover.
 
 **Reference regimes for the five (operator ruling 2026-10-11).** Minimal-invasive: inter-repo
 dependency references among the five cutover repos (lbe-toolkit, Make-it-Sing, Nessle,
@@ -260,7 +260,7 @@ indirect deps) — they ship their existing registry spellings verbatim, accepti
 incoherent floors for registry consumers until the trio republishes. Any other forced change
 to an inter-five reference aborts that repo's cutover with evidence. No other repo needs
 adjustment: Make-it-Sing's trio refs already resolve to compiling content (nessle git-SHA
-`68e19b1`; observething/stateful moving git URLs landing on main tips `f786746` ⊇ `957c7b6`
+`68e19b1`; observething/stateful moving git URLs arriving on main tips `f786746` ⊇ `957c7b6`
 and `c08203a`), and lbe's registry trio pins compile (its code uses no tip-only APIs).
 Application code changes ONLY where an external package at registry-latest demands it:
 playerbuild `0.3.0`'s flat `Outernet` namespace (Make-it-Sing's two `66697f3` editor files —
@@ -268,7 +268,7 @@ verified at tag `playerbuild-v0.3.0`), placeframe 2.0's `ARFoundationCameraProvi
 livekit-sdk 2.0's `TaskYieldInstruction` await shape. Every reference from the five to a repo
 outside the five is a package-registry pin at that package's actual latest published version,
 verified per name on npm: placeframe UPM at `2.0.0-dev.1324` until the dev→main promotion
-(re-spell to `2.0.0` rides the landing; apiclient may lag on the 1.0.6-dev line — pin actual
+(re-spell to `2.0.0` rides the merge; apiclient may lag on the 1.0.6-dev line — pin actual
 latest), playerbuild `0.3.0`, livekit-sdk `2.0.0`. The toolkit `uses:` SHA and the uv.lock
 toolchain pins are not dependency references; their own laws stand. Cutover order is fully
 independent.
@@ -278,7 +278,7 @@ independent.
 - **Make-it-Sing**: the canonical `build-docker.yml` call replaces the repo-local
   `build-livekit-token` job; `with: runs-on: '["self-hosted", "unity"]'` on its unity legs;
   a docker-devkit `>=0.4` floor replaces the exact poisoned pin; its 3 image refs
-  upstream-native; verify how stale `livekit-token` on ghcr is at cutover; landing strategy
+  upstream-native; verify how stale `livekit-token` on ghcr is at cutover; merge strategy
   ci-support-redux → new shape → green → merge-gate → evergreen dev. Never label before
   integrate runs (below).
 - **lbe-toolkit**: build on ci-support-redux; 1.0 → 1.1 all three packages; npm identities
@@ -296,7 +296,7 @@ independent.
 prerelease = "if-necessary-or-explicit"` (uv 0.12 deprecates; drop the table when it's the
 only key); delete redundant hatch wheel `include` blocks naming files under `packages`.
 
-**Standing constraints.** The GitHub App token cannot push or merge — lands go through each
+**Standing constraints.** The GitHub App token cannot push or merge — merges go through each
 repo's merge-gate or the operator. The agent never runs `git fetch` and never uses prepo in
 these repos: branch plainly in the main checkout (`git checkout -b <name>`), treating the
 local checkout as the session's state — origin-side truth arrives through the operator.

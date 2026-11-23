@@ -7,7 +7,7 @@ record to resume from. Nothing here is built or load-bearing yet.
 ## The model in force today
 
 `dev` is evergreen: PRs to it are certified by Integrate at the exact head
-SHA, and the merge-gate/merge-bot lander fast-forwards `dev` to certified
+SHA, and the merge-gate/merge-bot machinery fast-forwards `dev` to certified
 heads only. Promotion is an operator act: push a chosen certified dev SHA to
 `main` (`git push origin <sha>:main`). A `main` push fires `release.yml`,
 whose `release` verb computes the plan from the per-package tag ledger plus
@@ -34,7 +34,7 @@ the tag ledger is the version source of truth).
 
 The fire runbook:
 
-1. The fix lands on `dev` like any change and is certified green. Fixes
+1. The fix merges onto `dev` like any change and is certified green. Fixes
    always live on dev first — never only on the release branch.
 2. Cut a release branch at the promoted tip (a copy of `main`), typically
    retroactively from the last release tag; nothing stands between fires.
@@ -122,7 +122,7 @@ hotfix:  operator dispatches on release/*  ->  tagger tags  ->  tag push -> veri
   workflow filename; PyPI binds repo/workflow): the same `release.yml`
   publishing from a release branch keeps every trusted-publisher binding.
 - Lead times before the first fire: the workflow edits must be promoted, and
-  the tagger/verify code must land here with consumer wrapper SHA bumps
+  the tagger/verify code must arrive here with consumer wrapper SHA bumps
   (this repo is consumed by pinned SHA clone, never published).
 
 ## Open when resumed
