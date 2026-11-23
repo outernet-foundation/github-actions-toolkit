@@ -1,1 +1,4 @@
 extend = "ruff.base.toml"
+
+# design/ is the in-flux pre-implementation tier, not held to shipped-code lint
+extend-exclude = ["design"]
