@@ -66,6 +66,7 @@ def pr_view_payload(
     return json.dumps({
         "state": state,
         "title": title,
+        "author": {"login": "maintainer"},
         "headRefOid": PAYLOAD_SHA,
         "headRefName": "feature-x",
         "baseRefName": "dev",

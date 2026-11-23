@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
 import re
 
-from bashrun.bash import bash_output
+from bashrun.bash import bash_check, bash_output
 from pydantic import BaseModel, ConfigDict, Field
 
 BASE_BRANCH = "dev"
@@ -16,11 +17,17 @@ PULL_REQUEST_REF_PATTERNS = (r"^refs/pull/(\d+)/merge$",)
 AS_IS_INTEGRATE_LABEL = "approved-for-integrate"
 REBASE_INTEGRATE_LABEL = "approved-for-rebase-integrate"
 MERGE_LABEL = "approved-for-merge"
-PR_VIEW_FIELDS = "state,title,headRefOid,headRefName,baseRefName,labels,isDraft"
+WRITE_PERMISSIONS = frozenset({"admin", "maintain", "write"})
+NO_PERMISSION = "none"
+PR_VIEW_FIELDS = "state,title,author,headRefOid,headRefName,baseRefName,labels,isDraft"
 
 
 class LabelEntry(BaseModel):
     name: str
+
+
+class ActorEntry(BaseModel):
+    login: str
 
 
 class PullRequest(BaseModel):
@@ -28,11 +35,16 @@ class PullRequest(BaseModel):
 
     state: str
     title: str
+    author: ActorEntry
     head_oid: str = Field(alias="headRefOid")
     head_ref_name: str = Field(alias="headRefName")
     base_ref_name: str = Field(alias="baseRefName")
     labels: list[LabelEntry]
     is_draft: bool = Field(alias="isDraft")
+
+
+class PermissionEntry(BaseModel):
+    permission: str
 
 
 def pull_request_number_from_ref(ref: str) -> int:
@@ -56,3 +68,12 @@ def view_pull_request(pr_number: int) -> PullRequest:
 
 def label_names(pull_request: PullRequest) -> set[str]:
     return {label.name for label in pull_request.labels}
+
+
+def author_permission(author: str) -> str:
+    command = f"gh api repos/{os.environ['GITHUB_REPOSITORY']}/collaborators/{author}/permission"
+
+    # Treat a failed lookup as none, because a stranger is not a collaborator
+    if not bash_check(command):
+        return NO_PERMISSION
+    return PermissionEntry.model_validate_json(bash_output(command)).permission

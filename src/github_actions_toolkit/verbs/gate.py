@@ -7,6 +7,7 @@ from typing import Annotated
 
 import typer
 from bashrun.bash import bash, bash_check, bash_output
+from pydantic import BaseModel, RootModel
 
 from github_actions_toolkit.config import Settings
 from github_actions_toolkit.merging import (
@@ -16,6 +17,9 @@ from github_actions_toolkit.merging import (
     GIT_COMMAND,
     MERGE_LABEL,
     REBASE_INTEGRATE_LABEL,
+    WRITE_PERMISSIONS,
+    ActorEntry,
+    author_permission,
     candidate_ref,
     label_names,
     pull_request_number_from_ref,
@@ -27,10 +31,31 @@ app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 
 APPROVAL_LABELS = (AS_IS_INTEGRATE_LABEL, REBASE_INTEGRATE_LABEL, MERGE_LABEL)
 SYNCHRONIZE_EVENT = "synchronize"
+APPROVED_REVIEW = "APPROVED"
+PENDING_REVIEW = "PENDING"
 STRIP_COMMENT = (
     "Your push revoked this PR's approval: approval labels are granted per head."
     " A maintainer re-approves your changes by re-applying the label after review."
 )
+ANCHOR_COMMENT = (
+    "This PR's approval labels were removed: no maintainer's approving review stands at its"
+    " current head. A maintainer approves the latest commit through a review, then applies the"
+    " approval label again. The label is what starts the run."
+)
+REVIEW_REPAIR = "A maintainer approves the latest commit through a review, then applies the label again"
+
+
+class ReviewEntry(BaseModel):
+    id: int
+    state: str
+    commit_id: str
+    submitted_at: str | None
+    user: ActorEntry
+
+
+# Parse one inner list per page, the shape gh api --paginate --slurp prints
+class ReviewPages(RootModel[list[list[ReviewEntry]]]):
+    root: list[list[ReviewEntry]]
 
 
 @app.command()
@@ -52,7 +77,7 @@ def main(
         emit_mode_output("idle")
         return
     if stripping:
-        strip_approval_labels(pr_number, labels)
+        strip_approval_labels(pr_number, labels, STRIP_COMMENT)
         pull_request = view_pull_request(pr_number)
         labels = label_names(pull_request)
 
@@ -78,6 +103,52 @@ def main(
         )
         emit_mode_output("idle")
         return
+
+    # Let a write actor's own PR ride the label alone, because GitHub refuses self-approval
+    anchored = author_permission(pull_request.author.login) in WRITE_PERMISSIONS
+    verdict: ReviewEntry | None = None
+    head = ""
+    if anchored:
+        print(f"  {pull_request.author.login} holds write permission, so the label alone anchors PR #{pr_number}")
+    if not anchored:
+        head = bash_output("git rev-parse HEAD").strip()
+        pages = ReviewPages.model_validate_json(
+            bash_output(f"gh api repos/{settings.github_repository}/pulls/{pr_number}/reviews --paginate --slurp")
+        )
+        submitted = [
+            review
+            for page in pages.root
+            for review in page
+            if review.state != PENDING_REVIEW and review.commit_id == head
+        ]
+        # Count only write actors' reviews, because strangers can review a public repository
+        write_actors = {
+            review.user.login for review in submitted if author_permission(review.user.login) in WRITE_PERMISSIONS
+        }
+        verdict = max(
+            (review for review in submitted if review.user.login in write_actors),
+            key=lambda review: (review.submitted_at or "", review.id),
+            default=None,
+        )
+    if verdict is not None and verdict.state == APPROVED_REVIEW:
+        print(f"  {verdict.user.login} approved head {head[:12]}, the review anchors this run")
+    refused = not anchored and (verdict is None or verdict.state != APPROVED_REVIEW)
+    refusal = (
+        f"PR #{pr_number} carries an approval label but no write actor has reviewed head {head[:12]}"
+        if verdict is None
+        else (
+            f"PR #{pr_number} carries an approval label but the latest write-actor review at head"
+            f" {head[:12]} is {verdict.state}"
+        )
+    )
+    # If no approving review stands at the checked-out head
+    if refused and dry_run:
+        print(f"  would refuse: {refusal}. {REVIEW_REPAIR}")
+        print(f"  would strip {sorted(labels & set(APPROVAL_LABELS))} from PR #{pr_number} and post the explanation")
+        return
+    if refused:
+        strip_approval_labels(pr_number, labels, ANCHOR_COMMENT)
+        raise SystemExit(f"{refusal}. {REVIEW_REPAIR}")
 
     if AS_IS_INTEGRATE_LABEL in labels and dry_run:
         print(f"  would push the head as-is as {candidate_branch}")
@@ -139,10 +210,9 @@ def emit_mode_output(value: str) -> None:
     print(f"mode={value}")
 
 
-def strip_approval_labels(pr_number: int, labels: set[str]) -> None:
+def strip_approval_labels(pr_number: int, labels: set[str], comment: str) -> None:
     for label in sorted(labels & set(APPROVAL_LABELS)):
         bash(f"gh pr edit {pr_number} --remove-label {label}")
-        print(f"  stripped {label} (the push revoked the approval it named)")
-    bash(f"gh pr comment {pr_number} --body {shlex.quote(STRIP_COMMENT)}")
-    print(f"  posted the re-approval explanation on PR #{pr_number}")
-
+        print(f"  stripped {label}")
+    bash(f"gh pr comment {pr_number} --body {shlex.quote(comment)}")
+    print(f"  posted the explanation on PR #{pr_number}")
