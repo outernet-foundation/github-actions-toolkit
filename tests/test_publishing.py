@@ -149,6 +149,73 @@ def test_npm_publish_rides_the_dev_dist_tag(tmp_path: Path, monkeypatch: pytest.
     assert json.loads(manifest_path.read_text(encoding="utf-8"))["version"] == "0.0.0-local"
 
 
+def write_locked_build_package(tmp_path: Path) -> Path:
+    manifest_path = tmp_path / "package.json"
+    manifest_path.write_text(
+        json.dumps({
+            "name": "@placeframe/api-client",
+            "version": "0.0.0-local",
+            "scripts": {"build": "tsc", "prepare": "npm run build"},
+            "devDependencies": {"typescript": "5.9.3"},
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / "package-lock.json").write_text(json.dumps({"lockfileVersion": 3, "packages": {}}), encoding="utf-8")
+    return manifest_path
+
+
+def test_npm_publish_installs_the_locked_build_toolchain_before_publishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_locked_build_package(tmp_path)
+    recorder = CommandRecorder()
+    monkeypatch.setattr("github_actions_toolkit.publishing.bash", recorder)
+    monkeypatch.setattr("github_actions_toolkit.publishing.bash_output", recorder)
+
+    NpmRegistry().publish(tmp_path, "0.2.1", {}, True, 42)
+
+    assert recorder.commands == [
+        "npm ci --no-audit --no-fund",
+        "npm publish --access public --provenance --loglevel verbose --tag dev",
+    ]
+
+
+def test_npm_publish_installs_the_lockfile_even_without_build_scripts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_manifest(tmp_path)
+    (tmp_path / "package-lock.json").write_text(json.dumps({"lockfileVersion": 3, "packages": {}}), encoding="utf-8")
+    recorder = CommandRecorder()
+    monkeypatch.setattr("github_actions_toolkit.publishing.bash", recorder)
+    monkeypatch.setattr("github_actions_toolkit.publishing.bash_output", recorder)
+
+    NpmRegistry().publish(tmp_path, "0.2.1", {}, False, 0)
+
+    assert recorder.commands == [
+        "npm ci --no-audit --no-fund",
+        "npm publish --access public --provenance --loglevel verbose",
+    ]
+
+
+def test_npm_publish_with_build_script_but_no_lockfile_is_loud(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "package.json").write_text(
+        json.dumps({
+            "name": "@placeframe/api-client",
+            "version": "0.0.0-local",
+            "scripts": {"prepare": "npm run build"},
+        }),
+        encoding="utf-8",
+    )
+    recorder = CommandRecorder()
+    monkeypatch.setattr("github_actions_toolkit.publishing.bash", recorder)
+    monkeypatch.setattr("github_actions_toolkit.publishing.bash_output", recorder)
+
+    with pytest.raises(ValueError, match=r"runs build lifecycle scripts \['prepare'\] during publish"):
+        NpmRegistry().publish(tmp_path, "0.2.1", {}, False, 0)
+
+    assert recorder.commands == []
+
+
 def test_npm_publish_without_dist_tag_leaves_latest_alone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     write_manifest(tmp_path)
     recorder = CommandRecorder()

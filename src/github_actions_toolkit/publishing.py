@@ -17,6 +17,7 @@ NUGET_SOURCE = "https://api.nuget.org/v3/index.json"
 PYPI_SIMPLE_INDEX = "https://pypi.org/simple/"
 PYPROJECT_VERSION_PATTERN = re.compile(r'^version\s*=\s*"[^"]*"')
 NPM_DEV_DIST_TAG = "dev"
+NPM_BUILD_LIFECYCLE_SCRIPTS = ("prepack", "prepare", "prepublishOnly")
 
 
 class Registry(Protocol):
@@ -112,6 +113,9 @@ class NpmRegistry:
         dev: bool,
         commit_count: int,
     ) -> str:
+        # Installs run against the committed manifest while the lockfile is still in sync;
+        # the ephemeral version patch further down would desynchronize it
+        ensure_npm_build_dependencies(path)
         version, dependency_versions = resolve_publish_versions(
             self, base_version, commit_count, dev, resolved_dependencies
         )
@@ -171,6 +175,19 @@ def resolve_publish_versions(
         for identity, resolved in resolved_dependencies.items()
     }
     return version, dependency_versions
+
+
+def ensure_npm_build_dependencies(package_path: Path) -> None:
+    manifest = json.loads((package_path / "package.json").read_text(encoding="utf-8"))
+    if not (package_path / "package-lock.json").exists():
+        lifecycle_scripts = sorted(set(manifest.get("scripts", {})) & set(NPM_BUILD_LIFECYCLE_SCRIPTS))
+        if lifecycle_scripts:
+            raise ValueError(
+                f"npm package at '{package_path}' runs build lifecycle scripts {lifecycle_scripts} during publish "
+                "but carries no package-lock.json; commit a lockfile so the publish build resolves pinned inputs"
+            )
+        return
+    bash("npm ci --no-audit --no-fund", cwd=package_path)
 
 
 @contextmanager
