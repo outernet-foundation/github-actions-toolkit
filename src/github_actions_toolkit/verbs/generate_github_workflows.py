@@ -306,6 +306,7 @@ def splice_pass(
                     f" {sorted(undeclared)}"
                 )
         bindings = dict(entry.secrets.get(channel, {}))
+        consumer_env = dict(entry.env.get(channel, {}))
         runners = entry.runners
         takes_runners = "runs-on" in stage.workflow_call.inputs and any(
             isinstance(runs_on := body.get("runs-on"), str) and RUNS_ON_INPUT.fullmatch(runs_on)
@@ -338,6 +339,22 @@ def splice_pass(
                 if stage_level is not None:
                     job_level = composed.get(merged_key)
                     composed[merged_key] = stage_level if job_level is None else merged(stage_level, job_level)
+
+            # Refuse keys a step, the defaults, or the job env already sets, because the shadowing would be silent
+            defaults = composed.get("defaults")
+            run_defaults = defaults.get("run") if isinstance(defaults, dict) else None
+            default_env = run_defaults.get("env") if isinstance(run_defaults, dict) else None
+            steps = composed.get("steps")
+            step_envs = [step.get("env") for step in steps if isinstance(step, dict)] if isinstance(steps, list) else []
+            env_blocks = (composed.get("env"), default_env, *step_envs)
+            shadowed = {key for block in env_blocks if isinstance(block, dict) for key in block}
+            collisions = sorted(shadowed & consumer_env.keys())
+            if collisions:
+                raise SystemExit(
+                    f"job '{context.prefix}': consumer env collides with keys the stage's job already sets:"
+                    f" {collisions}"
+                )
+
             needs_value = job_body.get("needs")
             targets = needs_value if isinstance(needs_value, list) else ([] if needs_value is None else [needs_value])
             unknown = [target for target in targets if not (isinstance(target, str) and target in context.stage_jobs)]
@@ -350,6 +367,15 @@ def splice_pass(
                     spliced_body[body_key] = resolved_runs_on(value, context)
                     continue
                 spliced_body[body_key] = transform_node(value, context)
+
+            if consumer_env:
+                # Inject after the transform, because the rewriter would treat the repo-secret names as stage slots
+                existing = spliced_body.get("env")
+                base = dict(existing) if isinstance(existing, dict) else {}
+                spliced_body["env"] = {
+                    **base,
+                    **{name: f"${{{{ secrets.{secret} }}}}" for name, secret in consumer_env.items()},
+                }
             jobs.append(SplicedJob(key=f"{context.prefix}-{job_key}", needs=needs, body=spliced_body))
 
     needed = {target for job in jobs for target in job.needs}

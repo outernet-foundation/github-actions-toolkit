@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 from bashrun.bash import CalledProcessError, bash_output
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from github_actions_toolkit.config import PASSES, JobEntry, Pass, PublishConfig, load_config
 from github_actions_toolkit.verbs import generate_github_workflows as splicing
@@ -154,6 +154,12 @@ def step_of(body: YamlMapping, index: int) -> YamlMapping:
 
 def env_of(body: YamlMapping) -> YamlMapping:
     env = step_of(body, 0)["env"]
+    assert isinstance(env, dict)
+    return env
+
+
+def job_env_of(body: YamlMapping) -> YamlMapping:
+    env = body["env"]
     assert isinstance(env, dict)
     return env
 
@@ -345,6 +351,75 @@ def test_a_binding_typo_under_an_untargeted_channel_is_red(tmp_path: Path) -> No
 
     with pytest.raises(SystemExit, match="does not declare"):
         unity_fan({"build-unity": entry}, INTEGRATE, TOOLKIT, tmp_path)
+
+
+def test_consumer_env_lands_as_job_env_on_every_spliced_job(tmp_path: Path) -> None:
+    entry = {**UNITY, "env": {"pr": {"SERVICE_PROJECT_ID": "SERVICE_PROJECT_ID", "SERVICE_API_KEY": "SERVICE"}}}
+
+    spliced = unity_fan({"build-unity": entry}, INTEGRATE, TOOLKIT, tmp_path)
+
+    for key in ("build-unity-plan-builds", "build-unity-build"):
+        env = job_env_of(body_of(spliced, key))
+        assert env["SERVICE_PROJECT_ID"] == "${{ secrets.SERVICE_PROJECT_ID }}"
+        assert env["SERVICE_API_KEY"] == "${{ secrets.SERVICE }}"
+
+
+def test_consumer_env_binds_to_the_pass_channel(tmp_path: Path) -> None:
+    entry = {**UNITY, "env": {"pr": {"SERVICE_API_KEY": "SERVICE"}, "dev": {"SERVICE_API_KEY": "DEV_SERVICE"}}}
+
+    pr = job_env_of(body_of(unity_fan({"build-unity": entry}, INTEGRATE, TOOLKIT, tmp_path), "build-unity-build"))
+    dev = job_env_of(
+        body_of(unity_fan({"build-unity": entry}, RELEASE_DEV, TOOLKIT, tmp_path), "dev-build-unity-build")
+    )
+    stable = body_of(unity_fan({"build-unity": entry}, RELEASE_STABLE, TOOLKIT, tmp_path), "stable-build-unity-build")
+
+    assert pr["SERVICE_API_KEY"] == "${{ secrets.SERVICE }}"
+    assert dev["SERVICE_API_KEY"] == "${{ secrets.DEV_SERVICE }}"
+    assert "SERVICE_API_KEY" not in job_env_of(stable)
+
+
+def test_consumer_env_refuses_keys_the_stage_step_env_sets(tmp_path: Path) -> None:
+    entry = {**UNITY, "env": {"pr": {"CHANNEL": "SERVICE_CHANNEL"}}}
+
+    with pytest.raises(SystemExit, match=r"collides.*CHANNEL"):
+        unity_fan({"build-unity": entry}, INTEGRATE, TOOLKIT, tmp_path)
+
+
+def test_consumer_env_refuses_keys_the_stage_level_env_sets(tmp_path: Path) -> None:
+    entry = {**UNITY, "env": {"pr": {"PYTHONUNBUFFERED": "SERVICE"}}}
+
+    with pytest.raises(SystemExit, match=r"collides.*PYTHONUNBUFFERED"):
+        unity_fan({"build-unity": entry}, INTEGRATE, TOOLKIT, tmp_path)
+
+
+def test_consumer_env_refuses_keys_the_defaults_set(tmp_path: Path) -> None:
+    stage = parse_stage_document(
+        STAGE.replace(
+            "  build:\n    needs: [plan-builds]",
+            "  build:\n    needs: [plan-builds]\n    defaults:\n      run:\n        env:\n          FROM_DEFAULTS: x",
+        ),
+        "build-unity.yml",
+    )
+    entry = {**UNITY, "env": {"pr": {"FROM_DEFAULTS": "SERVICE"}}}
+
+    with pytest.raises(SystemExit, match=r"collides.*FROM_DEFAULTS"):
+        fan({"build-unity": entry}, {"build-unity": stage}, INTEGRATE, TOOLKIT, tmp_path)
+
+
+def test_consumer_env_refuses_runner_reserved_names(tmp_path: Path) -> None:
+    entry = {**UNITY, "env": {"pr": {"GITHUB_TOKEN": "SERVICE", "RUNNER_TEMP": "SERVICE"}}}
+
+    with pytest.raises(ValidationError, match=r"runner-reserved names: \['GITHUB_TOKEN', 'RUNNER_TEMP'\]"):
+        loaded({"build-unity": entry}, tmp_path)
+    with pytest.raises(ValidationError, match="String should match pattern"):
+        loaded({"build-unity": {**UNITY, "env": {"pr": {"service_api_key": "SERVICE"}}}}, tmp_path)
+
+
+def test_a_uses_entry_takes_no_env(tmp_path: Path) -> None:
+    entry = {"uses": MIRROR_USES, "env": {"pr": {"SERVICE_API_KEY": "SERVICE"}}}
+
+    with pytest.raises(ValidationError, match="takes no file, runners, secrets, or env"):
+        loaded({"mirror": entry}, tmp_path)
 
 
 def test_runners_override_the_runs_on_input_shape(tmp_path: Path) -> None:
@@ -623,6 +698,10 @@ GOLDEN_JOBS = {
         "path": True,
         "runners": ["self-hosted", "unity"],
         "secrets": {channel: {"unity-email": "UNITY_EMAIL"} for channel in ("pr", "dev", "stable")},
+        "env": {
+            "pr": {"SERVICE_PROJECT_ID": "SERVICE_PROJECT_ID", "SERVICE_API_KEY": "SERVICE_API_KEY"},
+            "dev": {"SERVICE_API_KEY": "SERVICE_API_KEY"},
+        },
     },
     "openapi-drift": {"path": True},
 }

@@ -32,6 +32,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      SERVICE_API_KEY: ${{ secrets.SERVICE_API_KEY }}
 
   dev-build-unity-build:
     needs:
@@ -48,6 +50,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      SERVICE_API_KEY: ${{ secrets.SERVICE_API_KEY }}
 
   dev-openapi-drift-check:
     if: ${{ github.ref == 'refs/heads/dev' }}

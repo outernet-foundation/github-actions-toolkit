@@ -55,6 +55,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      SERVICE_PROJECT_ID: ${{ secrets.SERVICE_PROJECT_ID }}
+      SERVICE_API_KEY: ${{ secrets.SERVICE_API_KEY }}
 
   build-unity-build:
     needs:
@@ -74,6 +77,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      SERVICE_PROJECT_ID: ${{ secrets.SERVICE_PROJECT_ID }}
+      SERVICE_API_KEY: ${{ secrets.SERVICE_API_KEY }}
 
   openapi-drift-check:
     needs:

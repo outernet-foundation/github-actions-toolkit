@@ -28,6 +28,7 @@ REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
 PINNED_USES_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/[^@\s]+@[0-9a-f]{40}$"
 SLOT_NAME_PATTERN = r"^[A-Za-z0-9_-]+$"
 BINDING_NAME_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
+ENV_NAME_PATTERN = r"^[A-Z][A-Z0-9_]*$"
 
 type Channel = Literal["pr", "dev", "stable"]
 type Target = Literal["integrate", "release-dev", "release-stable"]
@@ -35,6 +36,8 @@ type JobKey = Annotated[str, StringConstraints(pattern=JOB_KEY_PATTERN)]
 type SecretSlot = Annotated[str, StringConstraints(pattern=SLOT_NAME_PATTERN)]
 type SecretName = Annotated[str, StringConstraints(pattern=BINDING_NAME_PATTERN)]
 type SecretBindings = dict[SecretSlot, SecretName]
+type EnvName = Annotated[str, StringConstraints(pattern=ENV_NAME_PATTERN)]
+type EnvBindings = dict[EnvName, SecretName]
 
 
 @dataclass(frozen=True)
@@ -148,6 +151,7 @@ class JobEntry(BaseModel):
     file: Path | None = None
     runners: list[str] | None = Field(default=None, min_length=1)
     secrets: dict[Channel, SecretBindings] = Field(default_factory=dict)
+    env: dict[Channel, EnvBindings] = Field(default_factory=dict)
     targets: list[Target] | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
@@ -159,8 +163,13 @@ class JobEntry(BaseModel):
             raise ValueError("job entry: repository is required with package")
         if self.package is None and self.repository is not None:
             raise ValueError("job entry: repository is read only with package")
-        if self.uses is not None and (self.file is not None or self.runners is not None or self.secrets):
-            raise ValueError("job entry: a uses entry takes no file, runners, or secrets")
+        if self.uses is not None and (self.file is not None or self.runners is not None or self.secrets or self.env):
+            raise ValueError("job entry: a uses entry takes no file, runners, secrets, or env")
+        reserved = sorted(
+            name for bindings in self.env.values() for name in bindings if name.startswith(("GITHUB_", "RUNNER_"))
+        )
+        if reserved:
+            raise ValueError(f"job entry: env bindings must not use runner-reserved names: {reserved}")
         if self.file is not None and (self.file.is_absolute() or ".." in self.file.parts):
             raise ValueError("job entry: file is a path inside the consumer repository")
         if self.targets is not None and len(set(self.targets)) != len(self.targets):
